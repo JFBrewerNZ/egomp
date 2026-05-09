@@ -1,0 +1,263 @@
+#define NOMINMAX
+
+#include "windows.h"
+#include <conio.h>
+#include <sstream>
+#include <string>
+
+#include "NetMainGameComponent.h"
+
+NetMainGameComponent& NetMainGameComponent::GetInstance()
+{
+    static NetMainGameComponent instance;
+    return instance;
+}
+
+NetMainGameComponent::NetMainGameComponent() : mainGameComponent(CMainGameComponent::Get())
+{
+    SetupCallbacks();
+}
+
+NetMainGameComponent::~NetMainGameComponent()
+{
+    ClearCallbacks();
+}
+
+void NetMainGameComponent::SetupCallbacks()
+{
+    mainGameComponent->AddPostInitCallback("PostInit", [this]() { this->HandleMainGameComponentPostInit(); });
+    mainGameComponent->AddUpdateCallback("Update", [this]() { this->HandleMainGameComponentUpdate(); });
+}
+
+void NetMainGameComponent::ClearCallbacks()
+{
+    mainGameComponent->RemovePostInitCallback("PostInit");
+    mainGameComponent->RemoveUpdateCallback("Update");
+}
+
+void NetMainGameComponent::HandleMainGameComponentPostInit() {
+    Options();
+
+    mainGameComponent->RemovePostInitCallback("PostInit");
+}
+
+void NetMainGameComponent::HandleMainGameComponentUpdate()
+{
+    Selection();
+
+    if (!network)
+        return;
+
+    network->Update();
+
+    if (network && !network->IsActive())
+        Disconnect();
+}
+
+void ClearInputBuffer() {
+    std::cin.clear();
+
+    while (_kbhit()) {
+        (void)_getch();
+    }
+}
+
+std::string ReadIP(std::string defaultIP = "127.0.0.1") {
+    std::string input;
+    std::cout << "IP (" << defaultIP << "): ";
+    std::getline(std::cin, input);
+    return input.empty() ? defaultIP : input;
+}
+
+unsigned short ReadPort(unsigned short defaultPort = 60000) {
+    std::string input;
+    std::cout << "Port (" << defaultPort << "): ";
+    std::getline(std::cin, input);
+
+    if (input.empty())
+        return defaultPort;
+
+    try {
+        return (unsigned short)std::stoi(input);
+    }
+    catch (...) {
+        return defaultPort;
+    }
+}
+
+void NetMainGameComponent::Options()
+{
+    std::cout << "VK_NUMPAD1: Host" << std::endl;
+    std::cout << "VK_NUMPAD2: Connect" << std::endl;
+    std::cout << "VK_NUMPAD3: Disconnect" << std::endl;
+}
+
+void NetMainGameComponent::Selection() {
+    if (network)
+    {
+        if (GetAsyncKeyState(VK_NUMPAD3) & 1)
+        {
+            ClearInputBuffer();
+            network->Disconnect();
+        }
+
+        return;
+    }
+
+    if (GetAsyncKeyState(VK_NUMPAD1) & 1)
+    {
+        Host();
+    }
+    else if (GetAsyncKeyState(VK_NUMPAD2) & 1)
+    {
+        Connect();
+    }
+}
+
+void NetMainGameComponent::Host()
+{
+    ClearInputBuffer();
+
+    mainGameComponent = CMainGameComponent::Get();
+    network = std::make_unique<Network>();
+    netPlayerManager = std::make_unique<NetPlayerManager>(
+        network.get(),
+        mainGameComponent->GetPlayerManager(),
+        mainGameComponent->GetWorld()
+    );
+
+    SetupNetworkCallbacks();
+
+    unsigned short port = ReadPort();
+    network->Host(port);
+}
+
+void NetMainGameComponent::Connect()
+{
+    ClearInputBuffer();
+
+    mainGameComponent = CMainGameComponent::Get();
+    network = std::make_unique<Network>();
+    netPlayerManager = std::make_unique<NetPlayerManager>(
+        network.get(),
+        mainGameComponent->GetPlayerManager(),
+        mainGameComponent->GetWorld()
+    );
+
+    SetupNetworkCallbacks();
+
+    std::string ip = ReadIP();
+    unsigned short port = ReadPort();
+
+    network->AddDisconnectionNotificationCallback("DisconnectionNotification", [this](int networkId) { if (networkId == 0) network->Disconnect(); });
+    network->AddConnectionLostCallback("ConnectionLost", [this](int networkId) { if (networkId == 0) network->Disconnect(); });
+    network->AddConnectionAttemptFailedCallback("ConnectionAttemptFailed", [this]() { network->Disconnect(); });
+
+    network->Connect(ip.c_str(), port);
+}
+
+void NetMainGameComponent::Disconnect()
+{
+    ClearNetworkCallbacks();
+
+    netPlayerManager.reset();
+    network.reset();
+
+    Options();
+}
+
+void NetMainGameComponent::SetupNetworkCallbacks()
+{
+    network->AddConnectionNotificationCallback("ConnectionNotification", [this](int networkId, SystemAddress systemAddress) {
+        netPlayerManager->ConnectionNotification(networkId, systemAddress);
+    });
+    network->AddCreateLocalNetPlayerCallback("CreateLocalNetPlayer", [this](BitStream& bs) {
+        int networkId = -1;
+        C3DVector position = {};
+
+        bs.Read(networkId);
+        bs.Read(position);
+
+        netPlayerManager->CreateLocalNetPlayer(networkId, position);
+    });
+    network->AddCreateNetPlayerCallback("CreateNetPlayer", [this](BitStream& bs) {
+        int networkId = -1;
+        C3DVector position = {};
+        int defGlobalIndex;
+
+        bs.Read(networkId);
+        bs.Read(defGlobalIndex);
+        bs.Read(position);
+
+        netPlayerManager->CreateNetPlayer(networkId, position, defGlobalIndex);
+    });
+    network->AddCreateNetPlayersCallback("CreateNetPlayers", [this](BitStream& bs) {
+        int count = 0;
+        bs.Read(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            int networkId = -1;
+            C3DVector position = {};
+            int defGlobalIndex;
+
+            bs.Read(networkId);
+            bs.Read(defGlobalIndex);
+            bs.Read(position);
+
+            netPlayerManager->CreateNetPlayers(networkId, position, defGlobalIndex);
+        }
+    });
+    network->AddNetPlayerMovementCallback("NetPlayerMovement", [this](BitStream& bs) {
+        int networkId = -1;
+        C3DVector remotePosition = {};
+        C3DVector movementAcceleration = {};
+
+        bs.Read(networkId);
+        bs.Read(remotePosition);
+        bs.Read(movementAcceleration);
+
+        netPlayerManager->ReceiveNetPlayerMovement(networkId, remotePosition, movementAcceleration);
+    });
+    network->AddNetPlayerRotationCallback("NetPlayerRotation", [this](BitStream& bs) {
+        int networkId = -1;
+        C3DVector up = {};
+        C3DVector forward = {};
+
+        bs.Read(networkId);
+        bs.Read(up);
+        bs.Read(forward);
+
+        netPlayerManager->ReceiveNetPlayerRotation(networkId, up, forward);
+    });
+    network->AddDestroyLocalNetPlayerCallback("DestroyLocalNetPlayer", [this]() {
+        netPlayerManager->DestroyLocalNetPlayer();
+    });
+    network->AddDestroyNetPlayerCallback("DestroyNetPlayer", [this](int networkId) {
+        netPlayerManager->DestroyNetPlayer(networkId);
+    });
+    network->AddDestroyNetPlayersCallback("DestroyNetPlayers", [this]() {
+        netPlayerManager->DestroyNetPlayers();
+    });
+}
+
+void NetMainGameComponent::ClearNetworkCallbacks()
+{
+    if (network) {
+        network->RemoveConnectionNotificationCallback("ConnectionNotification");
+        network->RemoveDisconnectionNotificationCallback("DisconnectionNotification");
+        network->RemoveConnectionLostCallback("ConnectionLost");
+        network->RemoveConnectionAttemptFailedCallback("ConnectionAttemptFailed");
+
+        network->RemoveCreateLocalNetPlayerCallback("CreateLocalNetPlayer");
+
+        network->RemoveCreateNetPlayerCallback("CreateNetPlayer");
+        network->RemoveCreateNetPlayersCallback("CreateNetPlayers");
+
+        network->RemoveNetPlayerMovementCallback("NetPlayerMovement");
+        network->RemoveNetPlayerRotationCallback("NetPlayerRotation");
+
+        network->RemoveDestroyNetPlayerCallback("DestroyNetPlayer");
+        network->RemoveDestroyNetPlayersCallback("DestroyNetPlayers");
+    }
+}

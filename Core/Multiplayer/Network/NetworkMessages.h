@@ -1,0 +1,14 @@
+#pragma once
+
+#include "SLikeNet/MessageIdentifiers.h"
+
+enum NetworkMessages
+{
+    ID_CONNECTION_NOTIFICATION = ID_USER_PACKET_ENUM,
+    ID_CREATE_LOCAL_NET_PLAYER,
+    ID_CREATE_NET_PLAYER,
+    ID_CREATE_NET_PLAYERS,
+    ID_DESTROY_NET_PLAYER,
+    ID_PLAYER_MOVEMENT,
+    ID_PLAYER_ROTATION
+};
