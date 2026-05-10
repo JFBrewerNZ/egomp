@@ -17,7 +17,23 @@ Experimental multiplayer mod for [Fable: The Lost Chapters](https://en.wikipedia
 
 ## 🚀 Getting Started
 
-> Documentation and build instructions will be added later.
+1. Download the latest version from the [Releases](https://github.com/98thrxse/EgoMP/releases) page.
+2. Extract the archive into your game directory.
+3. Run the `EgoMP.exe` launcher to start the game with multiplayer support.
+4. Both the game and the console will launch separately.
+5. You must start or continue to enter the game world first — the mod will not work while you are still in the main menu.
+6. Once the game is running:
+   - Press **NUMPAD 1** to host a session.
+   - Press **NUMPAD 2** to connect to a session.
+   - Press **NUMPAD 3** to disconnect from the current session.
+7. If you are hosting:
+   - Alt + Tab to the console window.
+   - Enter a port number, or leave it empty to use the default port.
+8. If you are connecting:
+   - Alt + Tab to the console window.
+   - Enter the host IP (or leave empty for default).
+   - Then enter the port (or leave empty for default).
+9. Return to the game and *voilà*, everything should work!
 
 ## 📜 Legal & Licensing
 
