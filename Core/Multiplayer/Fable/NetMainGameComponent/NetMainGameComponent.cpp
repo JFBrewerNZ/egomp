@@ -27,18 +27,25 @@ void NetMainGameComponent::SetupCallbacks()
 {
     mainGameComponent->AddPostInitCallback("PostInit", [this]() { this->HandleMainGameComponentPostInit(); });
     mainGameComponent->AddUpdateCallback("Update", [this]() { this->HandleMainGameComponentUpdate(); });
+    mainGameComponent->AddShutdownCallback("Shutdown", [this]() { this->HandleMainGameComponentShutdown(); });
 }
 
 void NetMainGameComponent::ClearCallbacks()
 {
     mainGameComponent->RemovePostInitCallback("PostInit");
     mainGameComponent->RemoveUpdateCallback("Update");
+    mainGameComponent->RemoveShutdownCallback("Shutdown");
+}
+
+void NetMainGameComponent::HandleMainGameComponentShutdown()
+{
+    network->Disconnect();
+    if (network && !network->IsActive())
+        Disconnect();
 }
 
 void NetMainGameComponent::HandleMainGameComponentPostInit() {
     Options();
-
-    mainGameComponent->RemovePostInitCallback("PostInit");
 }
 
 void NetMainGameComponent::HandleMainGameComponentUpdate()
@@ -51,7 +58,10 @@ void NetMainGameComponent::HandleMainGameComponentUpdate()
     network->Update();
 
     if (network && !network->IsActive())
+    {
         Disconnect();
+        Options();
+    }
 }
 
 void ClearInputBuffer() {
@@ -162,8 +172,6 @@ void NetMainGameComponent::Disconnect()
 
     netPlayerManager.reset();
     network.reset();
-
-    Options();
 }
 
 void NetMainGameComponent::SetupNetworkCallbacks()

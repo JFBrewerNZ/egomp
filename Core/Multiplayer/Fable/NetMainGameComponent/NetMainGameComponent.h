@@ -35,4 +35,5 @@ private:
 
 	void HandleMainGameComponentPostInit();
 	void HandleMainGameComponentUpdate();
+	void HandleMainGameComponentShutdown();
 };

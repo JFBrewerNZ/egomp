@@ -23,11 +23,15 @@ public:
     void AddUpdateCallback(const std::string& id, std::function<void()> callback) { updateCallbacks[id] = callback; }
     void RemoveUpdateCallback(const std::string& id) { updateCallbacks.erase(id); }
 
+    void AddShutdownCallback(const std::string& id, std::function<void()> callback) { shutdownCallbacks[id] = callback; }
+    void RemoveShutdownCallback(const std::string& id) { shutdownCallbacks.erase(id); }
+
     static void Hook();
 
 private:
     static std::map<std::string, std::function<void()>> postInitCallbacks;
     static std::map<std::string, std::function<void()>> updateCallbacks;
+    static std::map<std::string, std::function<void()>> shutdownCallbacks;
 
     static void(__thiscall* OInit)(CMainGameComponent*);
     static void __fastcall HInit(CMainGameComponent* _this, void* _EDX);
@@ -37,4 +41,7 @@ private:
 
     static void(__thiscall* OUpdate)(CMainGameComponent*);
     static void __fastcall HUpdate(CMainGameComponent* _this, void* _EDX);
+
+    static void(__thiscall* OShutdown)(CMainGameComponent*);
+    static void __fastcall HShutdown(CMainGameComponent* _this, void* _EDX);
 };

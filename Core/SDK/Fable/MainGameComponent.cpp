@@ -7,6 +7,7 @@ CMainGameComponent* CMainGameComponent::Get()
 
 std::map<std::string, std::function<void()>> CMainGameComponent::postInitCallbacks;
 std::map<std::string, std::function<void()>> CMainGameComponent::updateCallbacks;
+std::map<std::string, std::function<void()>> CMainGameComponent::shutdownCallbacks;
 
 void(__thiscall* CMainGameComponent::OInit)(CMainGameComponent*) = nullptr;
 void __fastcall CMainGameComponent::HInit(CMainGameComponent* _this, void* _EDX)
@@ -38,6 +39,18 @@ void __fastcall CMainGameComponent::HUpdate(CMainGameComponent* _this, void* _ED
 	}
 }
 
+void(__thiscall* CMainGameComponent::OShutdown)(CMainGameComponent*) = nullptr;
+void __fastcall CMainGameComponent::HShutdown(CMainGameComponent* _this, void* _EDX)
+{
+	for (const auto& pair : shutdownCallbacks)
+	{
+		if (pair.second)
+			pair.second();
+	}
+
+	OShutdown(_this);
+}
+
 CPlayerManager* CMainGameComponent::GetPlayerManager()
 {
 	return *(CPlayerManager**)((char*)this + 0x1C);
@@ -53,4 +66,5 @@ void CMainGameComponent::Hook()
 	ADD_HOOK(0x004184BD, HInit, OInit);
 	ADD_HOOK(0x00416953, HPostInit, OPostInit);
 	ADD_HOOK(0x00418289, HUpdate, OUpdate);
+	ADD_HOOK(0x004175E5, HShutdown, OShutdown);
 }

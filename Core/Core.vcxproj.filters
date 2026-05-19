@@ -230,16 +230,10 @@
     <ClCompile Include="Multiplayer\Fable\NetMainGameComponent\NetMainGameComponent.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NPMUtils.cpp">
+    <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerUtils.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NPMSession.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NPMBroadcast.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NPMReceive.cpp">
+    <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerSession.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Multiplayer\Network\NetworkUtils.cpp">
@@ -249,6 +243,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Multiplayer\Network\NetworkDispatcher.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerLifecycle.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerMotion.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
