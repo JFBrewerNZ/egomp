@@ -30,4 +30,5 @@ Config::Config()
     hostPort = (unsigned short)GetPrivateProfileIntA("host", "port", hostPort, iniPath.c_str());
 
     showConsole = GetPrivateProfileIntA("general", "console", showConsole ? 1 : 0, iniPath.c_str()) != 0;
+    debugKeys = GetPrivateProfileIntA("general", "debug_keys", debugKeys ? 1 : 0, iniPath.c_str()) != 0;
 }

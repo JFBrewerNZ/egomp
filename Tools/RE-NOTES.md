@@ -34,15 +34,25 @@ Save-field names confirm the state we need to replicate per player:
 
 ## Next steps
 
-1. Identify reader functions: given a `CThingPlayerCreature`, obtain its
-   CTCInventoryClothing / CTCInventoryWeapons components (component list
-   walk — CThing has a TC list; CoopSpirit ctor hook shows TCs attach to a
-   CThing) and read currently-worn def indexes.
-2. Identify apply functions: candidates are vfuncs on the two inventory
-   vtables and the creature-action constructors. Verification plan: add a
-   config-gated debug key to the Core DLL that invokes one candidate on the
-   local hero with a known def index and logs — iterate until the right
-   function is confirmed (crash-safe: try in a throwaway save).
-3. Wire protocol: extend announce/create payloads with an equipment blob
+1. ~~Locate the hero's TC components~~ → **probe built** (2026-07-10):
+   `Core/Debug/ObjectInspector` identifies every pointer member of a live
+   object by its RTTI class name at runtime (vptr -> COL -> TypeDescriptor),
+   one indirection deep, so component lists show up too. Set
+   `debug_keys=1` under `[general]` in EgoMP.ini, load into the world, and
+   press **NUMPAD5**: the local hero `CThingPlayerCreature`'s first 0x600
+   bytes are mapped to the console and appended to `EgoMP-inspect.log`
+   (untracked, next to the DLL). Expected output: member offsets of
+   CTCInventoryClothing / CTCInventoryWeapons / CTCHeroMorph etc. — those
+   offsets become SDK struct members.
+2. Read the worn-item state: with component pointers in hand, inspect the
+   components themselves (extend the debug key or add a second one) to find
+   where equipped def indexes live; cross-check against the save-field
+   names above.
+3. Identify apply functions: candidates are vfuncs on the two inventory
+   vtables and the creature-action constructors. Verification plan: extend
+   the debug key to invoke one candidate on the local hero with a known def
+   index and log — iterate until the right function is confirmed
+   (crash-safe: try in a throwaway save).
+4. Wire protocol: extend announce/create payloads with an equipment blob
    (n slots x def index), new ID_PLAYER_EQUIPMENT message on change
    (hook the inventory-changed path once found).

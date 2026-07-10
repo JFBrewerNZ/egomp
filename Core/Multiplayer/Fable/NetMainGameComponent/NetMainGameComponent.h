@@ -28,6 +28,7 @@ private:
 	void ClearNetworkCallbacks();
 
 	void Selection();
+	void HandleDebugKeys();
 	void Options();
 	void Host();
 	void Connect();

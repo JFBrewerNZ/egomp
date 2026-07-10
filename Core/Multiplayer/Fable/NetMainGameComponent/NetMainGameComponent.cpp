@@ -5,6 +5,7 @@
 
 #include "NetMainGameComponent.h"
 #include "../../../Config/Config.h"
+#include "../../../Debug/ObjectInspector.h"
 
 // Delay before the first automatic connect after entering the world, and
 // between retries while unconnected.
@@ -102,9 +103,35 @@ void NetMainGameComponent::Options()
     std::cout << "[EgoMP] NUMPAD2: connect to server" << std::endl;
     std::cout << "[EgoMP] NUMPAD3: disconnect" << std::endl;
     std::cout << "[EgoMP] Edit EgoMP.ini to change these settings." << std::endl;
+
+    if (config.debugKeys)
+        std::cout << "[EgoMP] NUMPAD5: dump local hero component map (debug)" << std::endl;
+}
+
+void NetMainGameComponent::HandleDebugKeys()
+{
+    if (!Config::Get().debugKeys || !worldReady)
+        return;
+
+    if (GetAsyncKeyState(VK_NUMPAD5) & 1)
+    {
+        CPlayerManager* playerManager = mainGameComponent->GetPlayerManager();
+        CPlayer* player = playerManager ? playerManager->GetPlayer(0) : nullptr;
+        CThingPlayerCreature* creature = player ? player->GetPControlledCreature() : nullptr;
+
+        if (!creature)
+        {
+            std::cout << "[EgoMP] Inspect: no local hero creature" << std::endl;
+            return;
+        }
+
+        ObjectInspector::Dump("local hero creature", creature, 0x600);
+    }
 }
 
 void NetMainGameComponent::Selection() {
+    HandleDebugKeys();
+
     if (network)
     {
         if (GetAsyncKeyState(VK_NUMPAD3) & 1)

@@ -17,6 +17,10 @@ public:
 
     bool showConsole = true;
 
+    // Reverse-engineering aids (NUMPAD5 object inspector). Off by default;
+    // not for distributed builds.
+    bool debugKeys = false;
+
 private:
     Config();
 };
