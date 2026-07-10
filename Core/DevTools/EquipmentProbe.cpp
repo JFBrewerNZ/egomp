@@ -156,6 +156,40 @@ namespace
         report += line + "\n";
     }
 
+    // Item-vector entry: 5 dwords {defIndex, count, ptrA, ptrB, flags}.
+    // ptrA/ptrB are non-null only on a handful of entries (suspected: items
+    // instantiated in the world, i.e. currently worn/equipped).
+    struct ItemEntry
+    {
+        unsigned defIndex;
+        unsigned count;
+        void* ptrA;
+        void* ptrB;
+        unsigned flags;
+    };
+
+    void DescribeInstancePointer(std::string& report, const char* tag, void* p)
+    {
+        if (!p || !ObjectInspector::IsReadableMemory(p, 4 * sizeof(void*)))
+            return;
+
+        char buf[256];
+        for (size_t i = 0; i < 4; i++)
+        {
+            void* inner = ((void* const*)p)[i];
+            const char* rtti = ObjectInspector::GetRttiName(inner);
+            if (!rtti)
+                continue;
+
+            if (CThing* thing = AsThing(inner))
+                sprintf_s(buf, "[Equip]      %s[%u] -> %s (%s)", tag, (unsigned)i,
+                    rtti, DefNameOf(thing).c_str());
+            else
+                sprintf_s(buf, "[Equip]      %s[%u] -> %s", tag, (unsigned)i, rtti);
+            Emit(report, buf);
+        }
+    }
+
     void DumpCategories(std::string& report, const char* label, void* inventoryTC)
     {
         char buf[256];
@@ -169,31 +203,38 @@ namespace
         for (size_t c = 0; c < count; c++)
         {
             const CategoryRecord& rec = records[c];
-            size_t dwords = rec.itemsEnd - rec.itemsBegin;
+            size_t entries = (rec.itemsEnd - rec.itemsBegin) / 5;
 
-            sprintf_s(buf, "[Equip]  category id=0x%X selected=%d items-vector=%u dwords:",
-                rec.categoryId, rec.selectedIndex, (unsigned)dwords);
+            sprintf_s(buf, "[Equip]  category id=0x%X selected=%d entries=%u:",
+                rec.categoryId, rec.selectedIndex, (unsigned)entries);
             Emit(report, buf);
 
-            for (size_t i = 0; i < dwords && i < VECTOR_DUMP_MAX_DWORDS; i++)
+            for (size_t i = 0; i < entries; i++)
             {
-                if (!ObjectInspector::IsReadableMemory(rec.itemsBegin + i, sizeof(void*)))
+                const ItemEntry* e = (const ItemEntry*)(rec.itemsBegin + i * 5);
+                if (!ObjectInspector::IsReadableMemory(e, sizeof(ItemEntry)))
                     break;
+                if (!e->defIndex && !e->count && !e->ptrA)
+                    continue;
 
-                void* value = rec.itemsBegin[i];
-                if (CThing* thing = AsThing(value))
-                    sprintf_s(buf, "[Equip]   [%2u] %08X  %s", (unsigned)i,
-                        (unsigned)(uintptr_t)value, DefNameOf(thing).c_str());
-                else
-                    sprintf_s(buf, "[Equip]   [%2u] %08X", (unsigned)i,
-                        (unsigned)(uintptr_t)value);
+                sprintf_s(buf, "[Equip]   [%2u] def=0x%04X count=%-3u ptrA=%08X ptrB=%08X flags=%08X%s",
+                    (unsigned)i, e->defIndex, e->count,
+                    (unsigned)(uintptr_t)e->ptrA, (unsigned)(uintptr_t)e->ptrB, e->flags,
+                    e->ptrA ? "  <-- INSTANTIATED" : "");
                 Emit(report, buf);
+
+                if (e->ptrA)
+                {
+                    DescribeInstancePointer(report, "ptrA", e->ptrA);
+                    DescribeInstancePointer(report, "ptrB", e->ptrB);
+                }
             }
         }
     }
 
-    // First non-building item Thing in any clothing category — a real owned
-    // clothing item, safe to hand to probe candidates.
+    // Live CThing of an instantiated (suspected worn) clothing item — found
+    // via the instance pointers of a category entry. Safe to hand to probe
+    // candidates: it is a real clothing item Thing owned by the hero.
     CThing* FirstClothingItem(void* clothingTC, std::string* defNameOut)
     {
         CategoryRecord records[CATEGORY_MAX] = {};
@@ -201,23 +242,27 @@ namespace
 
         for (size_t c = 0; c < count; c++)
         {
-            size_t dwords = records[c].itemsEnd - records[c].itemsBegin;
-            for (size_t i = 0; i < dwords; i++)
+            size_t entries = (records[c].itemsEnd - records[c].itemsBegin) / 5;
+            for (size_t i = 0; i < entries; i++)
             {
-                if (!ObjectInspector::IsReadableMemory(records[c].itemsBegin + i, sizeof(void*)))
+                const ItemEntry* e = (const ItemEntry*)(records[c].itemsBegin + i * 5);
+                if (!ObjectInspector::IsReadableMemory(e, sizeof(ItemEntry)))
                     break;
 
-                CThing* thing = AsThing(records[c].itemsBegin[i]);
-                if (!thing || !RttiContains(thing, "ThingObject"))
-                    continue;
-
-                std::string defName = DefNameOf(thing);
-                if (defName.find("BUILDING") != std::string::npos
-                    || defName.find("CREATURE") != std::string::npos)
-                    continue;
-
-                *defNameOut = defName;
-                return thing;
+                for (void* p : { e->ptrA, e->ptrB })
+                {
+                    if (!p || !ObjectInspector::IsReadableMemory(p, 4 * sizeof(void*)))
+                        continue;
+                    for (size_t k = 0; k < 4; k++)
+                    {
+                        CThing* thing = AsThing(((void* const*)p)[k]);
+                        if (thing && RttiContains(thing, "ThingObject"))
+                        {
+                            *defNameOut = DefNameOf(thing);
+                            return thing;
+                        }
+                    }
+                }
             }
         }
 
@@ -278,6 +323,38 @@ namespace EquipmentProbe
                 melee ? DefNameOf(melee).c_str() : "<none>",
                 ranged ? DefNameOf(ranged).c_str() : "<none>");
             Emit(report, buf);
+
+            // The carried-slot members read <none> even with weapons on the
+            // hero's back — decode the raw CIntelligentPointer contents
+            // (handles rather than pointers?) and list every Thing reachable
+            // from the +0x138 pool, where weapon CThingObjects were seen.
+            sprintf_s(buf, "[Equip]  melee IP raw: %08X %08X %08X %08X  ranged IP raw: %08X %08X %08X %08X",
+                ((unsigned*)(base + MELEE_CARRIED_OFFSET))[0], ((unsigned*)(base + MELEE_CARRIED_OFFSET))[1],
+                ((unsigned*)(base + MELEE_CARRIED_OFFSET))[2], ((unsigned*)(base + MELEE_CARRIED_OFFSET))[3],
+                ((unsigned*)(base + RANGED_CARRIED_OFFSET))[0], ((unsigned*)(base + RANGED_CARRIED_OFFSET))[1],
+                ((unsigned*)(base + RANGED_CARRIED_OFFSET))[2], ((unsigned*)(base + RANGED_CARRIED_OFFSET))[3]);
+            Emit(report, buf);
+
+            const char* pool = *(const char* const*)(base + 0x138);
+            if (ObjectInspector::IsReadableMemory(pool, sizeof(void*)))
+            {
+                size_t hits = 0;
+                for (size_t i = 0; i < 0x140 && hits < 20; i++)
+                {
+                    const char* slot = pool + i * sizeof(void*);
+                    if (!ObjectInspector::IsReadableMemory(slot, sizeof(void*)))
+                        break;
+
+                    CThing* thing = AsThing(*(void* const*)slot);
+                    if (thing && RttiContains(thing, "ThingObject"))
+                    {
+                        sprintf_s(buf, "[Equip]  +0x138 pool [%3u] %s", (unsigned)i,
+                            DefNameOf(thing).c_str());
+                        Emit(report, buf);
+                        hits++;
+                    }
+                }
+            }
 
             DumpCategories(report, "weapons", weapons);
         }
