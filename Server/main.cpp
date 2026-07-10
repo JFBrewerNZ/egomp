@@ -32,6 +32,7 @@ struct PlayerState
 {
     SystemAddress address;
     int defGlobalIndex = -1;
+    int regionIndex = -1;
     Vec3 position;
     Vec3 up;
     Vec3 forward;
@@ -101,6 +102,10 @@ private:
                 HandlePlayerRotation(packet);
                 break;
 
+            case ID_PLAYER_REGION:
+                HandlePlayerRegion(packet);
+                break;
+
             case ID_DISCONNECTION_NOTIFICATION:
             case ID_CONNECTION_LOST:
                 HandleDisconnect(packet);
@@ -117,6 +122,22 @@ private:
 
     void HandleConnectionNotification(Packet* packet)
     {
+        int protocolVersion = -1;
+
+        BitStream versionBs(packet->data, packet->length, false);
+        versionBs.IgnoreBytes(sizeof(MessageID));
+        versionBs.Read(protocolVersion);
+
+        if (protocolVersion != EGOMP_PROTOCOL_VERSION)
+        {
+            std::cout << "[Server] Rejecting " << packet->systemAddress.ToString()
+                << ": protocol version " << protocolVersion
+                << " (expected " << EGOMP_PROTOCOL_VERSION << ")" << std::endl;
+
+            peer->CloseConnection(packet->systemAddress, true);
+            return;
+        }
+
         int networkId = GetFreeNetworkId();
 
         PlayerState state;
@@ -143,10 +164,12 @@ private:
         int networkId = -1;
         int defGlobalIndex = -1;
         Vec3 position;
+        int regionIndex = -1;
 
         in.Read(networkId);
         in.Read(defGlobalIndex);
         in.Read(position);
+        in.Read(regionIndex);
 
         int senderId = GetNetworkIdFromAddress(packet->systemAddress);
 
@@ -161,6 +184,7 @@ private:
         PlayerState& state = players[senderId];
         state.defGlobalIndex = defGlobalIndex;
         state.position = position;
+        state.regionIndex = regionIndex;
         state.announced = true;
 
         // Introduce the newcomer to everyone else...
@@ -188,6 +212,7 @@ private:
                 seed.Write(pair.first);
                 seed.Write(pair.second.defGlobalIndex);
                 seed.Write(pair.second.position);
+                seed.Write(pair.second.regionIndex);
             }
 
             peer->Send(&seed, HIGH_PRIORITY, RELIABLE_ORDERED, 0, state.address, false);
@@ -195,8 +220,35 @@ private:
 
         std::cout << "[Server] Player announced: id " << senderId
             << ", def " << defGlobalIndex
+            << ", region " << regionIndex
             << ", pos (" << position.X << ", " << position.Y << ", " << position.Z << ")"
             << std::endl;
+    }
+
+    void HandlePlayerRegion(Packet* packet)
+    {
+        BitStream in(packet->data, packet->length, false);
+        in.IgnoreBytes(sizeof(MessageID));
+
+        int networkId = -1;
+        int regionIndex = -1;
+        Vec3 position;
+
+        in.Read(networkId);
+        in.Read(regionIndex);
+        in.Read(position);
+
+        int senderId = GetNetworkIdFromAddress(packet->systemAddress);
+
+        if (senderId == -1 || senderId != networkId)
+            return;
+
+        players[senderId].regionIndex = regionIndex;
+        players[senderId].position = position;
+
+        SendToAnnouncedExcept(senderId, packet, HIGH_PRIORITY, RELIABLE_ORDERED);
+
+        std::cout << "[Server] Player " << senderId << " entered region " << regionIndex << std::endl;
     }
 
     void HandlePlayerMovement(Packet* packet)

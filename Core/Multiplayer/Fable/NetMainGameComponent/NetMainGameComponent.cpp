@@ -204,13 +204,15 @@ void NetMainGameComponent::SetupNetworkCallbacks()
     network->AddCreateNetPlayerCallback("CreateNetPlayer", [this](BitStream& bs) {
         int networkId = -1;
         C3DVector position = {};
-        int defGlobalIndex;
+        int defGlobalIndex = -1;
+        int regionIndex = -1;
 
         bs.Read(networkId);
         bs.Read(defGlobalIndex);
         bs.Read(position);
+        bs.Read(regionIndex);
 
-        netPlayerManager->CreateNetPlayer(networkId, position, defGlobalIndex);
+        netPlayerManager->CreateNetPlayer(networkId, position, defGlobalIndex, regionIndex);
     });
     network->AddCreateNetPlayersCallback("CreateNetPlayers", [this](BitStream& bs) {
         int count = 0;
@@ -220,13 +222,15 @@ void NetMainGameComponent::SetupNetworkCallbacks()
         {
             int networkId = -1;
             C3DVector position = {};
-            int defGlobalIndex;
+            int defGlobalIndex = -1;
+            int regionIndex = -1;
 
             bs.Read(networkId);
             bs.Read(defGlobalIndex);
             bs.Read(position);
+            bs.Read(regionIndex);
 
-            netPlayerManager->CreateNetPlayers(networkId, position, defGlobalIndex);
+            netPlayerManager->CreateNetPlayers(networkId, position, defGlobalIndex, regionIndex);
         }
     });
     network->AddNetPlayerMovementCallback("NetPlayerMovement", [this](BitStream& bs) {
@@ -250,6 +254,17 @@ void NetMainGameComponent::SetupNetworkCallbacks()
         bs.Read(forward);
 
         netPlayerManager->ReceiveNetPlayerRotation(networkId, up, forward);
+    });
+    network->AddNetPlayerRegionCallback("NetPlayerRegion", [this](BitStream& bs) {
+        int networkId = -1;
+        int regionIndex = -1;
+        C3DVector position = {};
+
+        bs.Read(networkId);
+        bs.Read(regionIndex);
+        bs.Read(position);
+
+        netPlayerManager->ReceiveNetPlayerRegion(networkId, regionIndex, position);
     });
     network->AddDestroyLocalNetPlayerCallback("DestroyLocalNetPlayer", [this]() {
         netPlayerManager->DestroyLocalNetPlayer();
@@ -277,6 +292,7 @@ void NetMainGameComponent::ClearNetworkCallbacks()
 
         network->RemoveNetPlayerMovementCallback("NetPlayerMovement");
         network->RemoveNetPlayerRotationCallback("NetPlayerRotation");
+        network->RemoveNetPlayerRegionCallback("NetPlayerRegion");
 
         network->RemoveDestroyNetPlayerCallback("DestroyNetPlayer");
         network->RemoveDestroyNetPlayersCallback("DestroyNetPlayers");

@@ -17,11 +17,12 @@ public:
     void ConnectionNotification(int networkId, SystemAddress systemAddress);
 
     void CreateLocalNetPlayer(int networkId, C3DVector position, bool hostIsPlayer);
-    void CreateNetPlayer(int networkId, C3DVector position, int defGlobalIndex);
-    void CreateNetPlayers(int networkId, C3DVector position, int defGlobalIndex);
+    void CreateNetPlayer(int networkId, C3DVector position, int defGlobalIndex, int regionIndex);
+    void CreateNetPlayers(int networkId, C3DVector position, int defGlobalIndex, int regionIndex);
 
     void ReceiveNetPlayerMovement(int networkId, C3DVector remotePosition, C3DVector movementAcceleration);
     void ReceiveNetPlayerRotation(int networkId, C3DVector up, C3DVector forward);
+    void ReceiveNetPlayerRegion(int networkId, int regionIndex, C3DVector position);
 
     void DestroyLocalNetPlayer();
     void DestroyNetPlayer(int networkId);
@@ -39,11 +40,18 @@ private:
     void TeleportLocalNetPlayerToHost(int networkId, C3DVector position);
     void AnnounceLocalNetPlayer(int networkId);
 
+    NetPlayer* FindNetPlayer(int networkId);
+    void SpawnNetPlayer(NetPlayer& netPlayer);
+    void DespawnNetPlayer(NetPlayer& netPlayer);
+    void DespawnNetPlayers();
+    void UpdateNetPlayerSpawn(NetPlayer& netPlayer);
+    void HandleLocalRegionLoad(long regionIndex);
+
     void ApplyNetPlayerMovement(int networkId);
     void ApplyNetPlayerRotation(int networkId);
 
     void BroadcastCreateLocalNetPlayer(int networkId, int defGlobalIndex, C3DVector position);
-    void BroadcastCreateNetPlayer(int networkId, int defGlobalIndex, C3DVector position);
+    void BroadcastCreateNetPlayer(int networkId, int defGlobalIndex, C3DVector position, int regionIndex);
     void BroadcastCreateNetPlayers(int networkId);
 
     void BroadcastLocalNetPlayerMovement(int networkId);

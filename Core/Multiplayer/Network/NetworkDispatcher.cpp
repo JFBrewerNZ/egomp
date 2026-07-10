@@ -41,6 +41,10 @@ void Network::Update()
 			HandleNetPlayerRotation(packet);
 			break;
 
+		case ID_PLAYER_REGION:
+			HandleNetPlayerRegion(packet);
+			break;
+
 		case ID_DISCONNECTION_NOTIFICATION:
 			HandleDisconnectionNotification(packet);
 			break;
@@ -80,6 +84,7 @@ void Network::HandleConnectionRequestAccepted(SLNet::Packet* packet)
 {
 	SLNet::BitStream bs;
 	bs.Write((SLNet::MessageID)ID_CONNECTION_NOTIFICATION);
+	bs.Write((int)EGOMP_PROTOCOL_VERSION);
 	peer->Send(&bs, HIGH_PRIORITY, RELIABLE_ORDERED, 0, packet->systemAddress, false);
 
 	std::cout << "[Network::Update] ID_CONNECTION_REQUEST_ACCEPTED: "
@@ -94,6 +99,22 @@ void Network::HandleConnectionRequestAccepted(SLNet::Packet* packet)
 
 void Network::HandleConnectionNotification(SLNet::Packet* packet)
 {
+	int protocolVersion = -1;
+
+	SLNet::BitStream versionBs(packet->data, packet->length, false);
+	versionBs.IgnoreBytes(sizeof(SLNet::MessageID));
+	versionBs.Read(protocolVersion);
+
+	if (protocolVersion != EGOMP_PROTOCOL_VERSION)
+	{
+		std::cout << "[Network::Update] Rejecting " << packet->systemAddress.ToString()
+			<< ": protocol version " << protocolVersion
+			<< " (expected " << EGOMP_PROTOCOL_VERSION << ")" << std::endl;
+
+		peer->CloseConnection(packet->systemAddress, true);
+		return;
+	}
+
 	int networkId = GetFreeNetworkId();
 	connections.push_back({ packet->systemAddress, networkId });
 
@@ -179,6 +200,21 @@ void Network::HandleNetPlayerRotation(SLNet::Packet* packet)
 	SLNet::BitStream bs(packet->data, packet->length, false);
 
 	for (const auto& pair : netPlayerRotationCallbacks)
+	{
+		if (pair.second)
+		{
+			bs.ResetReadPointer();
+			bs.IgnoreBytes(sizeof(SLNet::MessageID));
+			pair.second(bs);
+		}
+	}
+}
+
+void Network::HandleNetPlayerRegion(SLNet::Packet* packet)
+{
+	SLNet::BitStream bs(packet->data, packet->length, false);
+
+	for (const auto& pair : netPlayerRegionCallbacks)
 	{
 		if (pair.second)
 		{

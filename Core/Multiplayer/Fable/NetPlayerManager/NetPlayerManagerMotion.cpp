@@ -131,6 +131,30 @@ void NetPlayerManager::ReceiveNetPlayerMovement(int networkId, C3DVector remoteP
     }
 }
 
+void NetPlayerManager::ReceiveNetPlayerRegion(int networkId, int regionIndex, C3DVector position)
+{
+    if (localNetPlayer && localNetPlayer->GetNetworkId() == 0)
+    {
+        SLNet::BitStream bs;
+        bs.Write((SLNet::MessageID)ID_PLAYER_REGION);
+        bs.Write(networkId);
+        bs.Write(regionIndex);
+        bs.Write(position);
+
+        network->SendToAllClientsExcept(networkId, (const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
+    }
+
+    NetPlayer* netPlayer = FindNetPlayer(networkId);
+
+    if (!netPlayer)
+        return;
+
+    netPlayer->SetRegionIndex(regionIndex);
+    netPlayer->SetPosition(position);
+
+    UpdateNetPlayerSpawn(*netPlayer);
+}
+
 void NetPlayerManager::ReceiveNetPlayerRotation(int networkId, C3DVector up, C3DVector forward)
 {
     if (localNetPlayer && localNetPlayer->GetNetworkId() == 0)

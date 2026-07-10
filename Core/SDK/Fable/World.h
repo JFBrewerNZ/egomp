@@ -38,6 +38,11 @@ public:
     void AddUpdateRegionLoadCallback(const std::string& id, std::function<void()> callback) { updateRegionLoadCallbacks[id] = callback; }
     void RemoveUpdateRegionLoadCallback(const std::string& id) { updateRegionLoadCallbacks.erase(id); }
 
+    // Fires before the game begins unloading the current region — the last
+    // safe moment to tear down mod-created things living in it.
+    static void AddSetAsLoadingRegionCallback(const std::string& id, std::function<void()> callback) { setAsLoadingRegionCallbacks[id] = callback; }
+    static void RemoveSetAsLoadingRegionCallback(const std::string& id) { setAsLoadingRegionCallbacks.erase(id); }
+
     void EAMoveHeroToRegion(CGameEvent const* event);
     void HandleMoveHeroToRegionGameEvent(CGameEvent const& game_event);
     void SetAsLoadingRegion(C3DVector const& region_start_pos, float facing_angle_xy, bool via_teleporter, bool allow_during_cut_scenes, bool via_door);
@@ -46,6 +51,7 @@ public:
 
 private:
     static std::map<std::string, std::function<void()>> updateRegionLoadCallbacks;
+    static std::map<std::string, std::function<void()>> setAsLoadingRegionCallbacks;
 
     static void(__thiscall* OEAMoveHeroToRegion)(CWorld*, CGameEvent const*);
     static void __fastcall HEAMoveHeroToRegion(CWorld* _this, void* _EDX, CGameEvent const* event);

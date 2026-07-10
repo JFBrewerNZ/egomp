@@ -2,12 +2,17 @@
 
 #include "SLikeNet/MessageIdentifiers.h"
 
+// Bumped whenever a payload changes shape; mismatching peers are rejected
+// at ID_CONNECTION_NOTIFICATION.
+const int EGOMP_PROTOCOL_VERSION = 2;
+
 // Every payload is prefixed with its [uint8 messageId].
 // "host" below means the session authority: either a hosting player (P2P)
 // or a dedicated server; both use networkId 0.
 enum NetworkMessages
 {
-    // client -> host, empty. Announces the connection once it is accepted.
+    // client -> host: [int protocolVersion]
+    // Announces the connection once it is accepted.
     ID_CONNECTION_NOTIFICATION = ID_USER_PACKET_ENUM,
 
     // host -> client: [int networkId][uint8 hostIsPlayer][C3DVector position]
@@ -17,11 +22,11 @@ enum NetworkMessages
     ID_CREATE_LOCAL_NET_PLAYER,
 
     // client -> host (announce), host -> clients (relay):
-    // [int networkId][int defGlobalIndex][C3DVector position]
+    // [int networkId][int defGlobalIndex][C3DVector position][int regionIndex]
     ID_CREATE_NET_PLAYER,
 
-    // host -> joining client: [int count],
-    // then count x ([int networkId][int defGlobalIndex][C3DVector position])
+    // host -> joining client: [int count], then count x
+    // ([int networkId][int defGlobalIndex][C3DVector position][int regionIndex])
     ID_CREATE_NET_PLAYERS,
 
     // host -> clients: [int networkId]
@@ -33,5 +38,10 @@ enum NetworkMessages
 
     // sender -> host -> other clients:
     // [int networkId][C3DVector up][C3DVector forward]
-    ID_PLAYER_ROTATION
+    ID_PLAYER_ROTATION,
+
+    // sender -> host -> other clients:
+    // [int networkId][int regionIndex][C3DVector position]
+    // Sent after the sender finishes loading into a region.
+    ID_PLAYER_REGION
 };

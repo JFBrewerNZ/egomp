@@ -40,10 +40,7 @@ The EgoMP console window is only a log — it starts minimized and can be hidden
 EgoMPServer.exe [port] [maxPlayers]   # defaults: 60000, 8
 ```
 
-Clients join a dedicated server exactly like joining a hosted game (**NUMPAD 2**, then enter the server's IP and port in the console). Unlike joining a player host, you are **not** teleported: you appear in your own world at your own position, and see other players who are in the same region.
-
-> [!NOTE]
-> Players in *different* regions currently still see each other's creatures at raw coordinates; region-scoped visibility is in progress. For now, meet up in the same region.
+Clients join a dedicated server using the address configured in `EgoMP.ini`. Unlike joining a player host, you are **not** teleported: you appear in your own world at your own position. Player visibility is region-scoped — you see the players who are in the same region as you, and they appear/disappear as either of you moves between regions.
 
 ## 📜 Legal & Licensing
 

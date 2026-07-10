@@ -29,46 +29,125 @@ void NetPlayerManager::CreateLocalNetPlayer(int networkId, C3DVector position, b
         AnnounceLocalNetPlayer(networkId);
 }
 
-void NetPlayerManager::CreateNetPlayer(int networkId, C3DVector position, int defGlobalIndex)
+void NetPlayerManager::CreateNetPlayer(int networkId, C3DVector position, int defGlobalIndex, int regionIndex)
 {
+    NetPlayer* netPlayer = FindNetPlayer(networkId);
+
+    if (!netPlayer)
+    {
+        std::unique_ptr<NetPlayer> created = std::make_unique<NetPlayer>();
+        created->SetNetworkId(networkId);
+        netPlayers.push_back(std::move(created));
+        netPlayer = netPlayers.back().get();
+    }
+
+    netPlayer->SetDefGlobalIndex(defGlobalIndex);
+    netPlayer->SetPosition(position);
+    netPlayer->SetRegionIndex(regionIndex);
+
+    UpdateNetPlayerSpawn(*netPlayer);
+
+    if (localNetPlayer && localNetPlayer->GetNetworkId() == 0)
+    {
+        BroadcastCreateNetPlayer(networkId, defGlobalIndex, position, regionIndex);
+        BroadcastCreateNetPlayers(networkId);
+    }
+}
+
+void NetPlayerManager::CreateNetPlayers(int networkId, C3DVector position, int defGlobalIndex, int regionIndex)
+{
+    if (!localNetPlayer)
+        return;
+
+    if (networkId != localNetPlayer->GetNetworkId() && !FindNetPlayer(networkId))
+    {
+        CreateNetPlayer(networkId, position, defGlobalIndex, regionIndex);
+    }
+}
+
+NetPlayer* NetPlayerManager::FindNetPlayer(int networkId)
+{
+    for (auto& netPlayer : netPlayers)
+    {
+        if (netPlayer && netPlayer->GetNetworkId() == networkId)
+            return netPlayer.get();
+    }
+
+    return nullptr;
+}
+
+void NetPlayerManager::SpawnNetPlayer(NetPlayer& netPlayer)
+{
+    if (netPlayer.IsSpawned())
+        return;
+
     int localId = GetFreeLocalId();
     playerManager->CreatePlayer(localId);
     CPlayer* player = playerManager->GetPlayer(localId);
 
     if (!player)
     {
-        std::cout << "[NetPlayerManager::CreateNetPlayer]: !player: " << networkId << std::endl;
+        std::cout << "[NetPlayerManager::SpawnNetPlayer]: !player: " << netPlayer.GetNetworkId() << std::endl;
         return;
     }
 
-    std::unique_ptr<NetPlayer> netPlayer = std::make_unique<NetPlayer>();
-    netPlayer->SetNetworkId(networkId);
-    netPlayer->SetLocalId(localId);
-    netPlayers.push_back(std::move(netPlayer));
+    netPlayer.SetLocalId(localId);
 
     CThingPlayerCreatureInit init = {};
-    CThingPlayerCreature* creature = CThingPlayerCreature::Create(defGlobalIndex, position, localId, init);
+    CThingPlayerCreature* creature = CThingPlayerCreature::Create(netPlayer.GetDefGlobalIndex(), netPlayer.GetPosition(), localId, init);
     player->SetControlledCreature(creature);
 
-    ApplyNetPlayerMovement(networkId);
-    ApplyNetPlayerRotation(networkId);
+    ApplyNetPlayerMovement(netPlayer.GetNetworkId());
+    ApplyNetPlayerRotation(netPlayer.GetNetworkId());
+}
 
-    if (localNetPlayer && localNetPlayer->GetNetworkId() == 0)
+void NetPlayerManager::DespawnNetPlayer(NetPlayer& netPlayer)
+{
+    if (!netPlayer.IsSpawned())
+        return;
+
+    int networkId = netPlayer.GetNetworkId();
+
+    CThingPlayerCreature::RemoveResolveMovementAccelerationCallback("ResolveMovementAcceleration" + std::to_string(networkId));
+    CThingPlayerCreature::RemoveResolveFacingDirectionCallback("ResolveFacingDirection" + std::to_string(networkId));
+
+    CPlayer* player = playerManager->GetPlayer(netPlayer.GetLocalId());
+
+    if (player)
     {
-        BroadcastCreateNetPlayer(networkId, defGlobalIndex, position);
-        BroadcastCreateNetPlayers(networkId);
+        CThingPlayerCreature* creature = player->GetPControlledCreature();
+
+        if (creature)
+        {
+            player->UninitCharacter();
+            player->Uninitialise();
+        }
+        else
+            std::cout << "[NetPlayerManager::DespawnNetPlayer]: !creature: " << networkId << std::endl;
+    }
+    else
+        std::cout << "[NetPlayerManager::DespawnNetPlayer]: !player: " << networkId << std::endl;
+
+    netPlayer.SetLocalId(-1);
+}
+
+void NetPlayerManager::DespawnNetPlayers()
+{
+    for (auto& netPlayer : netPlayers)
+    {
+        if (netPlayer)
+            DespawnNetPlayer(*netPlayer);
     }
 }
 
-void NetPlayerManager::CreateNetPlayers(int networkId, C3DVector position, int defGlobalIndex)
+void NetPlayerManager::UpdateNetPlayerSpawn(NetPlayer& netPlayer)
 {
-    if (!localNetPlayer)
-        return;
+    bool sameRegion = netPlayer.GetRegionIndex() == (int)CWorldMap::GetCurrentRegionIndex();
 
-    if (networkId != localNetPlayer->GetNetworkId() && GetLocalIdFromNetworkId(networkId) == -1)
-    {
-        CreateNetPlayer(networkId, position, defGlobalIndex);
-    }
+    if (sameRegion && !netPlayer.IsSpawned())
+        SpawnNetPlayer(netPlayer);
+    else if (!sameRegion && netPlayer.IsSpawned())
+        DespawnNetPlayer(netPlayer);
 }
 
 void NetPlayerManager::DestroyLocalNetPlayer()
@@ -86,34 +165,14 @@ void NetPlayerManager::DestroyLocalNetPlayer()
 
 void NetPlayerManager::DestroyNetPlayer(int networkId)
 {
-    CThingPlayerCreature::RemoveResolveMovementAccelerationCallback("ResolveMovementAcceleration" + std::to_string(networkId));
-    CThingPlayerCreature::RemoveResolveFacingDirectionCallback("ResolveFacingDirection" + std::to_string(networkId));
-
-    int localId = GetLocalIdFromNetworkId(networkId);
-    CPlayer* player = localId != -1 ? playerManager->GetPlayer(localId) : nullptr;
-
-    if (player)
-    {
-        CThingPlayerCreature* creature = player->GetPControlledCreature();
-
-        if (creature)
-        {
-            player->UninitCharacter();
-            player->Uninitialise();
-        }
-        else
-            std::cout << "[NetPlayerManager::DestroyNetPlayer]: !creature: " << networkId << std::endl;
-    }
-    else
-        std::cout << "[NetPlayerManager::DestroyNetPlayer]: !player: " << networkId << std::endl;
-
     // Always remove the entry and notify clients, even when the game-side
-    // lookups fail — otherwise DestroyNetPlayers loops forever and other
-    // clients keep a ghost player.
+    // lookups inside DespawnNetPlayer fail — otherwise DestroyNetPlayers
+    // loops forever and other clients keep a ghost player.
     for (size_t i = 0; i < netPlayers.size(); ++i)
     {
         if (netPlayers[i] && netPlayers[i]->GetNetworkId() == networkId)
         {
+            DespawnNetPlayer(*netPlayers[i]);
             netPlayers.erase(netPlayers.begin() + i);
             break;
         }
@@ -167,8 +226,35 @@ void NetPlayerManager::AnnounceLocalNetPlayer(int networkId)
     bs.Write(networkId);
     bs.Write(defGlobalIndex);
     bs.Write(position);
+    bs.Write((int)CWorldMap::GetCurrentRegionIndex());
 
     network->SendToHost((const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
+}
+
+void NetPlayerManager::HandleLocalRegionLoad(long regionIndex)
+{
+    if (!localNetPlayer)
+        return;
+
+    CThingPlayerCreature* creature = GetCreatureFromLocalId(localNetPlayer->GetLocalId());
+    C3DVector position = creature ? *((CThing*)creature)->GetPos() : C3DVector{};
+
+    SLNet::BitStream bs;
+    bs.Write((SLNet::MessageID)ID_PLAYER_REGION);
+    bs.Write(localNetPlayer->GetNetworkId());
+    bs.Write((int)regionIndex);
+    bs.Write(position);
+
+    if (localNetPlayer->GetNetworkId() == 0)
+        network->SendToAllClients((const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
+    else
+        network->SendToHost((const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
+
+    for (auto& netPlayer : netPlayers)
+    {
+        if (netPlayer)
+            UpdateNetPlayerSpawn(*netPlayer);
+    }
 }
 
 void NetPlayerManager::BroadcastCreateLocalNetPlayer(int networkId, int defGlobalIndex, C3DVector position)
@@ -184,18 +270,20 @@ void NetPlayerManager::BroadcastCreateLocalNetPlayer(int networkId, int defGloba
         bs.Write(networkId);
         bs.Write(defGlobalIndex);
         bs.Write(position);
+        bs.Write((int)CWorldMap::GetCurrentRegionIndex());
 
         network->SendToHost((const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
         });
 }
 
-void NetPlayerManager::BroadcastCreateNetPlayer(int networkId, int defGlobalIndex, C3DVector position)
+void NetPlayerManager::BroadcastCreateNetPlayer(int networkId, int defGlobalIndex, C3DVector position, int regionIndex)
 {
     SLNet::BitStream bsOut;
     bsOut.Write((SLNet::MessageID)ID_CREATE_NET_PLAYER);
     bsOut.Write(networkId);
     bsOut.Write(defGlobalIndex);
     bsOut.Write(position);
+    bsOut.Write(regionIndex);
 
     network->SendToAllClientsExcept(networkId, (const char*)bsOut.GetData(), bsOut.GetNumberOfBytesUsed());
 }
@@ -203,7 +291,9 @@ void NetPlayerManager::BroadcastCreateNetPlayer(int networkId, int defGlobalInde
 void NetPlayerManager::BroadcastCreateNetPlayers(int networkId)
 {
     // Entries are collected first: the count must reflect only the entries
-    // actually written, and creature lookups can fail.
+    // actually written, and the local creature lookup can fail. Remote
+    // entries come from stored state — their creatures only exist here when
+    // they share the host's region.
     SLNet::BitStream entries;
     int count = 0;
 
@@ -217,6 +307,7 @@ void NetPlayerManager::BroadcastCreateNetPlayers(int networkId)
             entries.Write(localNetPlayerNetworkId);
             entries.Write(GetDefGlobalIndex(creature));
             entries.Write(*((CThing*)creature)->GetPos());
+            entries.Write((int)CWorldMap::GetCurrentRegionIndex());
             ++count;
         }
         else
@@ -225,18 +316,13 @@ void NetPlayerManager::BroadcastCreateNetPlayers(int networkId)
 
     for (const auto& netPlayer : netPlayers)
     {
-        int netPlayerNetworkId = netPlayer->GetNetworkId();
-        CThingPlayerCreature* creature = GetCreatureFromNetworkId(netPlayerNetworkId);
-
-        if (!creature)
-        {
-            std::cout << "[NetPlayerManager::BroadcastCreateNetPlayers]: !creature" << std::endl;
+        if (!netPlayer || netPlayer->GetNetworkId() == networkId)
             continue;
-        }
 
-        entries.Write(netPlayerNetworkId);
-        entries.Write(GetDefGlobalIndex(creature));
-        entries.Write(*((CThing*)creature)->GetPos());
+        entries.Write(netPlayer->GetNetworkId());
+        entries.Write(netPlayer->GetDefGlobalIndex());
+        entries.Write(netPlayer->GetPosition());
+        entries.Write(netPlayer->GetRegionIndex());
         ++count;
     }
 
