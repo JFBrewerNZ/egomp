@@ -123,6 +123,9 @@
     <ClInclude Include="SDK\Fable\PhysicsControlled.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SDK\Fable\HeroAppearanceModifiers.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
     <ClInclude Include="SDK\Fable\GameAction.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -261,6 +264,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Multiplayer\Network\NetworkDispatcher.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SDK\Fable\HeroAppearanceModifiers.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerAppearance.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerLifecycle.cpp">

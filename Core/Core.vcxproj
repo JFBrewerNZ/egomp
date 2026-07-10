@@ -164,6 +164,7 @@
     <ClInclude Include="SDK\Fable\DefString.h" />
     <ClInclude Include="SDK\Fable\DefStringTable.h" />
     <ClInclude Include="SDK\Fable\GameAction.h" />
+    <ClInclude Include="SDK\Fable\HeroAppearanceModifiers.h" />
     <ClInclude Include="SDK\Fable\GameEvent.h" />
     <ClInclude Include="SDK\Fable\GamePlayerInterface.h" />
     <ClInclude Include="SDK\Fable\CharString.h" />
@@ -191,6 +192,7 @@
     <ClCompile Include="DevTools\ObjectInspector.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="Multiplayer\Fable\NetMainGameComponent\NetMainGameComponent.cpp" />
+    <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerAppearance.cpp" />
     <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerLifecycle.cpp" />
     <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerMotion.cpp" />
     <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerSession.cpp" />
@@ -230,6 +232,7 @@
     <ClCompile Include="SDK\Fable\ThingPlayerCreature.cpp" />
     <ClCompile Include="SDK\Fable\ThingPlayerCreatureInit.cpp" />
     <ClCompile Include="SDK\Fable\Game.cpp" />
+    <ClCompile Include="SDK\Fable\HeroAppearanceModifiers.cpp" />
     <ClCompile Include="SDK\Fable\MainGameComponent.cpp" />
     <ClCompile Include="SDK\Fable\Player.cpp" />
     <ClCompile Include="SDK\Fable\PlayerManager.cpp" />

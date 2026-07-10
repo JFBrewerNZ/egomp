@@ -12,6 +12,7 @@
 
 #include <iostream>
 #include <map>
+#include <vector>
 
 #include <SLikeNet/RakPeerInterface.h>
 #include <SLikeNet/RakNetTypes.h>
@@ -36,6 +37,7 @@ struct PlayerState
     Vec3 position;
     Vec3 up;
     Vec3 forward;
+    std::vector<int> appearance; // appearance-modifier def indexes
     bool announced = false; // true once the client has sent ID_CREATE_NET_PLAYER
 };
 
@@ -104,6 +106,10 @@ private:
 
             case ID_PLAYER_REGION:
                 HandlePlayerRegion(packet);
+                break;
+
+            case ID_PLAYER_APPEARANCE:
+                HandlePlayerAppearance(packet);
                 break;
 
             case ID_DISCONNECTION_NOTIFICATION:
@@ -216,6 +222,23 @@ private:
             }
 
             peer->Send(&seed, HIGH_PRIORITY, RELIABLE_ORDERED, 0, state.address, false);
+
+            // Their looks, too.
+            for (const auto& pair : players)
+            {
+                if (pair.first == senderId || !pair.second.announced
+                    || pair.second.appearance.empty())
+                    continue;
+
+                BitStream looks;
+                looks.Write((MessageID)ID_PLAYER_APPEARANCE);
+                looks.Write(pair.first);
+                looks.Write((int)pair.second.appearance.size());
+                for (int defIndex : pair.second.appearance)
+                    looks.Write(defIndex);
+
+                peer->Send(&looks, HIGH_PRIORITY, RELIABLE_ORDERED, 0, state.address, false);
+            }
         }
 
         std::cout << "[Server] Player announced: id " << senderId
@@ -294,6 +317,40 @@ private:
         players[senderId].forward = forward;
 
         SendToAnnouncedExcept(senderId, packet, HIGH_PRIORITY, UNRELIABLE_SEQUENCED);
+    }
+
+    void HandlePlayerAppearance(Packet* packet)
+    {
+        BitStream in(packet->data, packet->length, false);
+        in.IgnoreBytes(sizeof(MessageID));
+
+        int networkId = -1;
+        int count = 0;
+
+        in.Read(networkId);
+        in.Read(count);
+
+        int senderId = GetNetworkIdFromAddress(packet->systemAddress);
+
+        if (senderId == -1 || senderId != networkId || count < 0 || count > 256)
+            return;
+
+        std::vector<int> appearance;
+        appearance.reserve(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            int defIndex = -1;
+            in.Read(defIndex);
+            appearance.push_back(defIndex);
+        }
+
+        players[senderId].appearance = std::move(appearance);
+
+        SendToAnnouncedExcept(senderId, packet, HIGH_PRIORITY, RELIABLE_ORDERED);
+
+        std::cout << "[Server] Player " << senderId << " appearance updated ("
+            << count << " modifiers)" << std::endl;
     }
 
     void HandleDisconnect(Packet* packet)

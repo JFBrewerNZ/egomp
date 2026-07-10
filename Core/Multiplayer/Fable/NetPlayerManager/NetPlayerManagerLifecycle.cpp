@@ -51,6 +51,7 @@ void NetPlayerManager::CreateNetPlayer(int networkId, C3DVector position, int de
     {
         BroadcastCreateNetPlayer(networkId, defGlobalIndex, position, regionIndex);
         BroadcastCreateNetPlayers(networkId);
+        SendNetPlayerAppearancesTo(networkId);
     }
 }
 
@@ -99,6 +100,7 @@ void NetPlayerManager::SpawnNetPlayer(NetPlayer& netPlayer)
 
     ApplyNetPlayerMovement(netPlayer.GetNetworkId());
     ApplyNetPlayerRotation(netPlayer.GetNetworkId());
+    ApplyNetPlayerAppearance(netPlayer);
 }
 
 void NetPlayerManager::DespawnNetPlayer(NetPlayer& netPlayer)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <vector>
 
 #include "../../../SDK/Fable/SDK.h"
 
@@ -19,6 +20,8 @@ private:
     C3DVector movementAcceleration;
     C3DVector position;
     CRightHandedSet rhSet;
+
+    std::vector<int> appearanceDefIndexes;
 
 public:
     NetPlayer();
@@ -46,4 +49,7 @@ public:
 
     void SetRHSet(CRightHandedSet rhSet);
     CRightHandedSet GetRHSet() const;
+
+    void SetAppearance(std::vector<int> modifierDefIndexes) { appearanceDefIndexes = std::move(modifierDefIndexes); }
+    const std::vector<int>& GetAppearance() const { return appearanceDefIndexes; }
 };

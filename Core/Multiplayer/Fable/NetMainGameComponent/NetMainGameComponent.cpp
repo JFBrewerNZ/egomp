@@ -73,6 +73,9 @@ void NetMainGameComponent::HandleMainGameComponentUpdate()
     {
         network->Update();
 
+        if (network && netPlayerManager)
+            netPlayerManager->UpdateAppearanceSync();
+
         if (network && !network->IsActive())
         {
             Disconnect();
@@ -331,6 +334,28 @@ void NetMainGameComponent::SetupNetworkCallbacks()
 
         netPlayerManager->ReceiveNetPlayerRegion(networkId, regionIndex, position);
     });
+    network->AddNetPlayerAppearanceCallback("NetPlayerAppearance", [this](BitStream& bs) {
+        int networkId = -1;
+        int count = 0;
+
+        bs.Read(networkId);
+        bs.Read(count);
+
+        if (count < 0 || count > 256)
+            return;
+
+        std::vector<int> modifierDefIndexes;
+        modifierDefIndexes.reserve(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            int defIndex = -1;
+            bs.Read(defIndex);
+            modifierDefIndexes.push_back(defIndex);
+        }
+
+        netPlayerManager->ReceiveNetPlayerAppearance(networkId, std::move(modifierDefIndexes));
+    });
     network->AddDestroyLocalNetPlayerCallback("DestroyLocalNetPlayer", [this]() {
         netPlayerManager->DestroyLocalNetPlayer();
     });
@@ -358,6 +383,7 @@ void NetMainGameComponent::ClearNetworkCallbacks()
         network->RemoveNetPlayerMovementCallback("NetPlayerMovement");
         network->RemoveNetPlayerRotationCallback("NetPlayerRotation");
         network->RemoveNetPlayerRegionCallback("NetPlayerRegion");
+        network->RemoveNetPlayerAppearanceCallback("NetPlayerAppearance");
 
         network->RemoveDestroyNetPlayerCallback("DestroyNetPlayer");
         network->RemoveDestroyNetPlayersCallback("DestroyNetPlayers");
