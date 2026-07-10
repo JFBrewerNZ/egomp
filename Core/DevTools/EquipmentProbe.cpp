@@ -21,6 +21,7 @@ namespace
     const int TC_ID_INVENTORY_WEAPONS = 0x13;
     const int TC_ID_HERO_ATTACHABLE_APPEARANCE = 0x5E;
     const int TC_ID_HERO_MORPH = 0x03;
+    const int TC_ID_HERO_STATS = 0x04;
 
     // CTCHeroMorph body-shape inputs (serializer @0x71D020): seven floats.
     const size_t MORPH_FLOATS_OFFSET = 0x48; // Strength Will Skill Age Morality Fatness Tan
@@ -360,6 +361,34 @@ namespace EquipmentProbe
         }
         else
             Emit(report, "[Equip] no CTCHeroMorph found");
+
+        // Muscle bulk isn't driven by the morph floats (a buff hero reads
+        // strength=0.354 locally); suspect experience spent per stat.
+        // CTCHeroStats serializer: ExperienceSpentOn @+0x18,
+        // HeroStatsExperience @+0x118, TotalSpentExperience @+0x13C.
+        if (const char* stats = (const char*)FindTC(creature, TC_ID_HERO_STATS))
+        {
+            const void* spentOn = *(const void* const*)(stats + 0x18);
+            std::string line = "[Equip] stats TC: expSpentOn buffer";
+            if (ObjectInspector::IsReadableMemory(spentOn, 24 * 4))
+            {
+                const int* v = (const int*)spentOn;
+                for (size_t i = 0; i < 24; i++)
+                {
+                    char num[16];
+                    sprintf_s(num, " %d", v[i]);
+                    line += num;
+                }
+            }
+            else
+                line += " <unreadable>";
+            Emit(report, line);
+
+            sprintf_s(buf, "[Equip] stats TC: heroStatsExp=%d totalSpentExp=%d raw+0x18=%08X",
+                *(const int*)(stats + 0x118), *(const int*)(stats + 0x13C),
+                (unsigned)(uintptr_t)spentOn);
+            Emit(report, buf);
+        }
 
         if (void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING))
             DumpCategories(report, "clothing", clothing);
