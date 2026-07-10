@@ -336,9 +336,17 @@ void NetMainGameComponent::SetupNetworkCallbacks()
     });
     network->AddNetPlayerAppearanceCallback("NetPlayerAppearance", [this](BitStream& bs) {
         int networkId = -1;
+        HeroMorphValues morph;
         int count = 0;
 
         bs.Read(networkId);
+        bs.Read(morph.strength);
+        bs.Read(morph.will);
+        bs.Read(morph.skill);
+        bs.Read(morph.age);
+        bs.Read(morph.morality);
+        bs.Read(morph.fatness);
+        bs.Read(morph.tan);
         bs.Read(count);
 
         if (count < 0 || count > 256)
@@ -354,7 +362,7 @@ void NetMainGameComponent::SetupNetworkCallbacks()
             modifierDefIndexes.push_back(defIndex);
         }
 
-        netPlayerManager->ReceiveNetPlayerAppearance(networkId, std::move(modifierDefIndexes));
+        netPlayerManager->ReceiveNetPlayerAppearance(networkId, morph, std::move(modifierDefIndexes));
     });
     network->AddDestroyLocalNetPlayerCallback("DestroyLocalNetPlayer", [this]() {
         netPlayerManager->DestroyLocalNetPlayer();

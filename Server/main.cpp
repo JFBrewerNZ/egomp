@@ -38,6 +38,8 @@ struct PlayerState
     Vec3 up;
     Vec3 forward;
     std::vector<int> appearance; // appearance-modifier def indexes
+    float morph[7] = {};         // strength..tan body-shape values
+    bool hasAppearance = false;
     bool announced = false; // true once the client has sent ID_CREATE_NET_PLAYER
 };
 
@@ -227,12 +229,14 @@ private:
             for (const auto& pair : players)
             {
                 if (pair.first == senderId || !pair.second.announced
-                    || pair.second.appearance.empty())
+                    || !pair.second.hasAppearance)
                     continue;
 
                 BitStream looks;
                 looks.Write((MessageID)ID_PLAYER_APPEARANCE);
                 looks.Write(pair.first);
+                for (float value : pair.second.morph)
+                    looks.Write(value);
                 looks.Write((int)pair.second.appearance.size());
                 for (int defIndex : pair.second.appearance)
                     looks.Write(defIndex);
@@ -325,9 +329,12 @@ private:
         in.IgnoreBytes(sizeof(MessageID));
 
         int networkId = -1;
+        float morph[7] = {};
         int count = 0;
 
         in.Read(networkId);
+        for (float& value : morph)
+            in.Read(value);
         in.Read(count);
 
         int senderId = GetNetworkIdFromAddress(packet->systemAddress);
@@ -345,7 +352,11 @@ private:
             appearance.push_back(defIndex);
         }
 
-        players[senderId].appearance = std::move(appearance);
+        PlayerState& state = players[senderId];
+        state.appearance = std::move(appearance);
+        for (int i = 0; i < 7; i++)
+            state.morph[i] = morph[i];
+        state.hasAppearance = true;
 
         SendToAnnouncedExcept(senderId, packet, HIGH_PRIORITY, RELIABLE_ORDERED);
 

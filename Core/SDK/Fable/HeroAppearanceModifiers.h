@@ -32,3 +32,34 @@ public:
     // modifier sets.
     std::vector<int> GetModifierDefIndexes();
 };
+
+// CTCHeroMorph body-shape inputs — normalized 0..1 floats the engine
+// continuously morphs the hero model toward. Member offsets from the
+// component's serializer (0x71D020).
+struct HeroMorphValues
+{
+    float strength = 0.0f;
+    float will = 0.0f;
+    float skill = 0.0f;
+    float age = 0.0f;
+    float morality = 0.5f;
+    float fatness = 0.5f;
+    float tan = 0.0f;
+
+    bool operator==(const HeroMorphValues& o) const
+    {
+        return strength == o.strength && will == o.will && skill == o.skill
+            && age == o.age && morality == o.morality && fatness == o.fatness
+            && tan == o.tan;
+    }
+    bool operator!=(const HeroMorphValues& o) const { return !(*this == o); }
+};
+
+class CTCHeroMorph
+{
+public:
+    static CTCHeroMorph* FromCreature(CThingPlayerCreature* creature);
+
+    HeroMorphValues GetValues();
+    void SetValues(const HeroMorphValues& values);
+};

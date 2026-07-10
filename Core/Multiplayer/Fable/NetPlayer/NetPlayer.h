@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "../../../SDK/Fable/SDK.h"
+#include "../../../SDK/Fable/HeroAppearanceModifiers.h"
 
 // State for one remote player. The entry always exists while the player is in
 // the session; its in-world creature exists only while both players are in
@@ -22,6 +23,8 @@ private:
     CRightHandedSet rhSet;
 
     std::vector<int> appearanceDefIndexes;
+    HeroMorphValues morphValues;
+    bool hasMorphValues = false;
 
 public:
     NetPlayer();
@@ -52,4 +55,8 @@ public:
 
     void SetAppearance(std::vector<int> modifierDefIndexes) { appearanceDefIndexes = std::move(modifierDefIndexes); }
     const std::vector<int>& GetAppearance() const { return appearanceDefIndexes; }
+
+    void SetMorphValues(const HeroMorphValues& values) { morphValues = values; hasMorphValues = true; }
+    bool HasMorphValues() const { return hasMorphValues; }
+    const HeroMorphValues& GetMorphValues() const { return morphValues; }
 };

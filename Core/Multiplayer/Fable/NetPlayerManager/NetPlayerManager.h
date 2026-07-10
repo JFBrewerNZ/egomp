@@ -23,7 +23,7 @@ public:
     void ReceiveNetPlayerMovement(int networkId, C3DVector remotePosition, C3DVector movementAcceleration);
     void ReceiveNetPlayerRotation(int networkId, C3DVector up, C3DVector forward);
     void ReceiveNetPlayerRegion(int networkId, int regionIndex, C3DVector position);
-    void ReceiveNetPlayerAppearance(int networkId, std::vector<int> modifierDefIndexes);
+    void ReceiveNetPlayerAppearance(int networkId, HeroMorphValues morph, std::vector<int> modifierDefIndexes);
 
     // Called every game update: broadcasts the local hero's appearance
     // whenever the modifier set changes (throttled).
@@ -56,10 +56,11 @@ private:
     void ApplyNetPlayerRotation(int networkId);
     void ApplyNetPlayerAppearance(NetPlayer& netPlayer);
 
-    void BroadcastLocalNetPlayerAppearance(const std::vector<int>& modifierDefIndexes);
+    void BroadcastLocalNetPlayerAppearance(const HeroMorphValues& morph, const std::vector<int>& modifierDefIndexes);
     void SendNetPlayerAppearancesTo(int networkId);
 
     std::vector<int> lastSentAppearance;
+    HeroMorphValues lastSentMorph;
     unsigned long long nextAppearanceCheckMs = 0;
 
     void BroadcastCreateLocalNetPlayer(int networkId, int defGlobalIndex, C3DVector position);
