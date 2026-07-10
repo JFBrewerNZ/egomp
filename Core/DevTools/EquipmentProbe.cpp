@@ -453,50 +453,29 @@ namespace EquipmentProbe
         std::string report;
         char buf[256];
 
-        // The horns experiment: the appearance-reset vfunc re-applies the
-        // creature def's modifiers, adds OBJECT_HERO_HORNS via
-        // AddModifier(defIndex), and rebuilds the visible appearance. If the
-        // hero visibly sprouts horns, the whole apply pipeline for
-        // appearance sync is confirmed in one call.
-        void* appearance = FindTC(creature, TC_ID_HERO_ATTACHABLE_APPEARANCE);
-        if (!appearance)
+        // Morph-input experiment: force strength/fatness on the LOCAL hero
+        // and watch. If the body responds (bulks up / fattens over a few
+        // seconds), the morph floats are live inputs and the remote-body
+        // problem is a recompute clobber; if nothing happens, the floats
+        // are cached outputs and physique derives from stat levels held
+        // elsewhere. (The former AddModifier/pimp-hat experiment already
+        // proved the modifier pipeline.)
+        void* morph = FindTC(creature, TC_ID_HERO_MORPH);
+        if (!morph)
         {
-            Emit(report, "[Equip] probe: no appearance TC found");
+            Emit(report, "[Equip] probe: no morph TC found");
             ObjectInspector::AppendToLogFile(report);
             return;
         }
 
-        CCharString defName(PROBE_MODIFIER_DEF);
-        int defIndex = CDefinitionManager::Get()->GetDefGlobalIndexFromName(&defName);
-
-        sprintf_s(buf, "[Equip] probe: %s -> defIndex %d; AddModifier @ 0x%X on TC %p,"
-            " then rebuild - watch the hero's head!",
-            PROBE_MODIFIER_DEF, defIndex, (unsigned)FN_ADD_MODIFIER, appearance);
+        float* f = (float*)((char*)morph + MORPH_FLOATS_OFFSET);
+        sprintf_s(buf, "[Equip] probe: local morph strength %.3f -> 1.0, fatness %.3f -> 0.9"
+            " - watch the hero's body for ~20s!", f[0], f[5]);
         Emit(report, buf);
-        ObjectInspector::AppendToLogFile(report);
-        report.clear();
 
-        if (defIndex < 0)
-        {
-            Emit(report, "[Equip] probe: def name did not resolve, aborting");
-            ObjectInspector::AppendToLogFile(report);
-            return;
-        }
+        f[0] = 1.0f; // strength
+        f[5] = 0.9f; // fatness
 
-        unsigned long exceptionCode = 0;
-        GuardedThiscall1(FN_ADD_MODIFIER, appearance, (void*)(uintptr_t)defIndex, &exceptionCode);
-
-        unsigned long rebuildException = 0;
-        if (!exceptionCode)
-            GuardedThiscall0(FN_APPEARANCE_RESET_WITH_HORNS, appearance, &rebuildException);
-
-        if (exceptionCode || rebuildException)
-            sprintf_s(buf, "[Equip] probe: EXCEPTION add=0x%X rebuild=0x%X"
-                " (caught; game state may be unstable)",
-                (unsigned)exceptionCode, (unsigned)rebuildException);
-        else
-            sprintf_s(buf, "[Equip] probe: calls returned - is the hero wearing a big hat?");
-        Emit(report, buf);
         ObjectInspector::AppendToLogFile(report);
     }
 }
