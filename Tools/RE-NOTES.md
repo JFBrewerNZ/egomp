@@ -41,11 +41,22 @@ CTCCarrying=0x46, CTCGraphicAppearance=0x5B (also at `CThing+0x64`),
 CTCHeroAttachableAppearanceModifiers=0x5E. `CThing+0x70` = CThingCreatureDef.
 
 **CTCInventoryClothing** (per NUMPAD7 dump): `+0x004` owner creature,
-`+0x068` CInventoryDef, `+0x14C` -> **worn-armour slot array**: entries of
-`{CThingObject* wornPiece, CHitLocationDef*, CArmourDef*}` (stride 0x28,
-first entry 0x28 into the buffer; 5 populated slots on a fully-dressed
-hero). The worn pieces are real CThings -> `CThing::GetDefName` (already in
-the SDK) yields their def names for transmission.
+`+0x068` CInventoryDef. ~~`+0x14C` worn-armour slot array~~ — **wrong**:
+that pool tracks armoured *world objects* too (guild bookcases matched as
+"worn clothing"); do not use it.
+
+**Per-category inventory records** (the real item storage; found in pools
+referenced by the TC, but the pool pointers move between sessions — locate
+records by scanning TC-referenced pools for the CInventoryCategoryDef
+anchor). Record = 0x2C bytes:
+`{+0x00 itemVec.begin, +0x04 itemVec.end, +0x08 itemVec.cap,
++0x0C CInventoryCategoryDef*, +0x10 owner*, +0x14 categoryId
+(clothing: 0xA4C..0xA50), +0x18 selectedIndex (-1 = none), +0x1C 0}`.
+Item-vector entry layout TBD from next NUMPAD8 run (expected ~3 dwords per
+entry: item CThingObject*, count, flags — worn state presumably per-entry
+flag or the record's selectedIndex).
+Trivia: the pools contain leftover Lionhead dev strings
+("C:\Documents and Settings\rshaw\Desktop\TestOutputDir\...wav").
 
 **CTCInventoryWeapons** (serializer disassembly @0x5C3A95): `+0x140`
 MeleeWeaponCarried, `+0x150` RangedWeaponCarried (both look like
