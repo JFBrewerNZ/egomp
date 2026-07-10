@@ -19,19 +19,32 @@ namespace
     const int TC_ID_INVENTORY_CLOTHING = 0x12;
     const int TC_ID_INVENTORY_WEAPONS = 0x13;
 
-    // CTCInventoryClothing+0x14C points into a pool holding worn-armour
-    // entries of {CThingObject* piece, CHitLocationDef*, CArmourDef*} at
-    // irregular positions (observed strides vary between sessions), so worn
-    // pieces are found by scanning for that pointer-triple pattern rather
-    // than by fixed offsets.
-    const size_t WORN_ARRAY_OFFSET = 0x14C;
-    const size_t WORN_SCAN_DWORDS = 0x140;
-    const size_t WORN_MAX_SLOTS = 8;
-
     // CTCInventoryWeapons carried-weapon members (serializer @0x5C3A95):
     // CIntelligentPointer<CThing>, 0x10 bytes each.
     const size_t MELEE_CARRIED_OFFSET = 0x140;
     const size_t RANGED_CARRIED_OFFSET = 0x150;
+
+    // Per-category inventory record, 0x2C bytes, discovered by raw-dumping
+    // the pools behind the clothing TC (five records, categoryId
+    // 0xA4C..0xA50, immediately recognisable by the CInventoryCategoryDef*
+    // at +0x0C):
+    //   +0x00 itemVector.begin   +0x04 itemVector.end   +0x08 itemVector.cap
+    //   +0x0C CInventoryCategoryDef*   +0x10 owner subobject*
+    //   +0x14 categoryId   +0x18 selectedIndex(-1 = none)   +0x1C pad/0
+    // The pool pointers held by the TC move between sessions, so records are
+    // found by scanning every pool the TC references for CategoryDef anchors.
+    struct CategoryRecord
+    {
+        void* const* itemsBegin;
+        void* const* itemsEnd;
+        const void* categoryDef;
+        int categoryId;
+        int selectedIndex;
+    };
+    const size_t CATEGORY_MAX = 12;
+    const size_t TC_MEMBER_SCAN_BYTES = 0x80;
+    const size_t POOL_SCAN_DWORDS = 0x180;
+    const size_t VECTOR_DUMP_MAX_DWORDS = 48;
 
     void* FindTC(void* creature, int typeId)
     {
@@ -89,27 +102,126 @@ namespace
         return rtti && strstr(rtti, substring);
     }
 
-    size_t FindWornPieces(void* clothingTC, CThing** out, size_t max)
+    size_t FindCategoryRecords(void* inventoryTC, CategoryRecord* out, size_t max)
     {
-        const char* pool = *(const char* const*)((const char*)clothingTC + WORN_ARRAY_OFFSET);
         size_t found = 0;
 
-        for (size_t i = 0; found < max && i + 2 < WORN_SCAN_DWORDS; i++)
+        for (size_t m = 0; m < TC_MEMBER_SCAN_BYTES / sizeof(void*) && found < max; m++)
         {
-            const char* slot = pool + i * sizeof(void*);
-            if (!ObjectInspector::IsReadableMemory(slot, 3 * sizeof(void*)))
-                break;
+            const char* pool = ((const char* const*)inventoryTC)[m];
 
-            void* const* dwords = (void* const*)slot;
-            if (RttiContains(dwords[1], "HitLocationDef")
-                && RttiContains(dwords[2], "ArmourDef"))
+            // Raw heap buffers only — polymorphic objects are not pools.
+            if (!pool || !ObjectInspector::IsReadableMemory(pool, sizeof(void*))
+                || ObjectInspector::GetRttiName(pool))
+                continue;
+
+            for (size_t i = 3; i < POOL_SCAN_DWORDS && found < max; i++)
             {
-                if (CThing* piece = AsThing(dwords[0]))
-                    out[found++] = piece;
+                const char* slot = pool + i * sizeof(void*);
+                if (!ObjectInspector::IsReadableMemory(slot, sizeof(void*)))
+                    break;
+
+                void* anchor = *(void* const*)slot;
+                if (!RttiContains(anchor, "CInventoryCategoryDef"))
+                    continue;
+
+                void* const* rec = (void* const*)(slot - 0x0C);
+                void* const* begin = (void* const*)rec[0];
+                void* const* end = (void* const*)rec[1];
+                int categoryId = (int)(uintptr_t)rec[5];
+                int selectedIndex = (int)(uintptr_t)rec[6];
+
+                if ((uintptr_t)end < (uintptr_t)begin
+                    || (uintptr_t)end - (uintptr_t)begin > 0x1000)
+                    continue;
+                if (begin != end && !ObjectInspector::IsReadableMemory(begin, sizeof(void*)))
+                    continue;
+
+                bool duplicate = false;
+                for (size_t k = 0; k < found; k++)
+                    duplicate |= out[k].categoryDef == anchor;
+                if (duplicate)
+                    continue;
+
+                out[found++] = { begin, end, anchor, categoryId, selectedIndex };
             }
         }
 
         return found;
+    }
+
+    void Emit(std::string& report, const std::string& line)
+    {
+        std::cout << line << std::endl;
+        report += line + "\n";
+    }
+
+    void DumpCategories(std::string& report, const char* label, void* inventoryTC)
+    {
+        char buf[256];
+        CategoryRecord records[CATEGORY_MAX] = {};
+        size_t count = FindCategoryRecords(inventoryTC, records, CATEGORY_MAX);
+
+        sprintf_s(buf, "[Equip] %s TC @ %p: %u category records",
+            label, inventoryTC, (unsigned)count);
+        Emit(report, buf);
+
+        for (size_t c = 0; c < count; c++)
+        {
+            const CategoryRecord& rec = records[c];
+            size_t dwords = rec.itemsEnd - rec.itemsBegin;
+
+            sprintf_s(buf, "[Equip]  category id=0x%X selected=%d items-vector=%u dwords:",
+                rec.categoryId, rec.selectedIndex, (unsigned)dwords);
+            Emit(report, buf);
+
+            for (size_t i = 0; i < dwords && i < VECTOR_DUMP_MAX_DWORDS; i++)
+            {
+                if (!ObjectInspector::IsReadableMemory(rec.itemsBegin + i, sizeof(void*)))
+                    break;
+
+                void* value = rec.itemsBegin[i];
+                if (CThing* thing = AsThing(value))
+                    sprintf_s(buf, "[Equip]   [%2u] %08X  %s", (unsigned)i,
+                        (unsigned)(uintptr_t)value, DefNameOf(thing).c_str());
+                else
+                    sprintf_s(buf, "[Equip]   [%2u] %08X", (unsigned)i,
+                        (unsigned)(uintptr_t)value);
+                Emit(report, buf);
+            }
+        }
+    }
+
+    // First non-building item Thing in any clothing category — a real owned
+    // clothing item, safe to hand to probe candidates.
+    CThing* FirstClothingItem(void* clothingTC, std::string* defNameOut)
+    {
+        CategoryRecord records[CATEGORY_MAX] = {};
+        size_t count = FindCategoryRecords(clothingTC, records, CATEGORY_MAX);
+
+        for (size_t c = 0; c < count; c++)
+        {
+            size_t dwords = records[c].itemsEnd - records[c].itemsBegin;
+            for (size_t i = 0; i < dwords; i++)
+            {
+                if (!ObjectInspector::IsReadableMemory(records[c].itemsBegin + i, sizeof(void*)))
+                    break;
+
+                CThing* thing = AsThing(records[c].itemsBegin[i]);
+                if (!thing || !RttiContains(thing, "ThingObject"))
+                    continue;
+
+                std::string defName = DefNameOf(thing);
+                if (defName.find("BUILDING") != std::string::npos
+                    || defName.find("CREATURE") != std::string::npos)
+                    continue;
+
+                *defNameOut = defName;
+                return thing;
+            }
+        }
+
+        return nullptr;
     }
 
     // Unidentified 1-argument CTCInventoryClothing virtuals (vtable
@@ -141,12 +253,6 @@ namespace
 
 namespace EquipmentProbe
 {
-    void Emit(std::string& report, const std::string& line)
-    {
-        std::cout << line << std::endl;
-        report += line + "\n";
-    }
-
     void DumpEquipment(CThingPlayerCreature* creature)
     {
         std::string report;
@@ -156,109 +262,53 @@ namespace EquipmentProbe
             (void*)creature, DefNameOf((CThing*)creature).c_str());
         Emit(report, buf);
 
-        void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING);
-        size_t wornCount = 0;
-
-        if (clothing)
-        {
-            CThing* pieces[WORN_MAX_SLOTS] = {};
-            wornCount = FindWornPieces(clothing, pieces, WORN_MAX_SLOTS);
-            const void* pool = *(const void* const*)((const char*)clothing + WORN_ARRAY_OFFSET);
-
-            sprintf_s(buf, "[Equip] clothing TC @ %p, +0x14C pool @ %p, worn pieces found: %u",
-                clothing, pool, (unsigned)wornCount);
-            Emit(report, buf);
-
-            for (size_t i = 0; i < wornCount; i++)
-            {
-                sprintf_s(buf, "[Equip] worn[%u] = %s", (unsigned)i, DefNameOf(pieces[i]).c_str());
-                Emit(report, buf);
-            }
-        }
+        if (void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING))
+            DumpCategories(report, "clothing", clothing);
         else
             Emit(report, "[Equip] no CTCInventoryClothing found");
 
-        void* weapons = FindTC(creature, TC_ID_INVENTORY_WEAPONS);
-        CThing* melee = nullptr;
-        CThing* ranged = nullptr;
-
-        if (weapons)
+        if (void* weapons = FindTC(creature, TC_ID_INVENTORY_WEAPONS))
         {
             const char* base = (const char*)weapons;
-            melee = ThingFromIntelligentPointer(base + MELEE_CARRIED_OFFSET);
-            ranged = ThingFromIntelligentPointer(base + RANGED_CARRIED_OFFSET);
+            CThing* melee = ThingFromIntelligentPointer(base + MELEE_CARRIED_OFFSET);
+            CThing* ranged = ThingFromIntelligentPointer(base + RANGED_CARRIED_OFFSET);
 
             sprintf_s(buf, "[Equip] weapons TC @ %p, melee = %s, ranged = %s",
                 weapons,
                 melee ? DefNameOf(melee).c_str() : "<none>",
                 ranged ? DefNameOf(ranged).c_str() : "<none>");
             Emit(report, buf);
+
+            DumpCategories(report, "weapons", weapons);
         }
         else
             Emit(report, "[Equip] no CTCInventoryWeapons found");
 
         Emit(report, "[Equip] --- end ---");
         ObjectInspector::AppendToLogFile(report);
-
-        // A dressed hero with no findings means our layout assumptions are
-        // off again — capture the actual component contents for diagnosis.
-        if (clothing && wornCount == 0)
-            ObjectInspector::Dump("clothing TC (auto-dump: 0 worn found)", clothing, 0x200);
-        if (weapons && !melee && !ranged)
-            ObjectInspector::Dump("weapons TC (auto-dump: no weapons found)", weapons, 0x200);
-
-        // Category-record tables (both inventories keep {CInventoryCategoryDef*,
-        // ownerTC*, ...} records at stride 0x2C behind +0x24/+0x28) — the
-        // worn/carried item per category is expected inside these records;
-        // raw-dump them so the record layout can be decoded offline.
-        if (clothing)
-        {
-            const void* table = *(const void* const*)((const char*)clothing + 0x24);
-            if (ObjectInspector::IsReadableMemory(table, 4))
-                ObjectInspector::DumpRaw("clothing category records (+0x24)", table, 0x80);
-        }
-        if (weapons)
-        {
-            const void* table = *(const void* const*)((const char*)weapons + 0x28);
-            if (ObjectInspector::IsReadableMemory(table, 4))
-                ObjectInspector::DumpRaw("weapons category records (+0x28)", table, 0x80);
-        }
     }
 
     void ProbeNextCandidate(CThingPlayerCreature* creature)
     {
         static size_t next = 0;
+        std::string report;
+        char buf[256];
 
         void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING);
-        CThing* pieces[WORN_MAX_SLOTS] = {};
-        size_t count = clothing ? FindWornPieces(clothing, pieces, WORN_MAX_SLOTS) : 0;
+        std::string defName;
+        CThing* item = clothing ? FirstClothingItem(clothing, &defName) : nullptr;
 
-        // The +0x14C pool also tracks unrelated armoured world objects
-        // (buildings!); only accept hero-ish item defs as the probe
-        // argument so a garbage pointer can't masquerade as clothing.
-        CThing* piece = nullptr;
-        for (size_t i = 0; i < count && !piece; i++)
+        if (!item)
         {
-            std::string defName = DefNameOf(pieces[i]);
-            if (defName.find("HERO") != std::string::npos
-                || defName.find("OBJECT_") == 0)
-                piece = pieces[i];
-            else
-                std::cout << "[Equip] probe: skipping non-clothing pool entry "
-                    << defName << std::endl;
-        }
-
-        if (!piece)
-        {
-            std::cout << "[Equip] probe: no plausible worn clothing found on this hero"
-                " (check NUMPAD8 output first)" << std::endl;
+            Emit(report, "[Equip] probe: no owned clothing item found"
+                " (check NUMPAD8 output first)");
+            ObjectInspector::AppendToLogFile(report);
             return;
         }
 
         if (next >= CANDIDATE_COUNT)
         {
-            std::cout << "[Equip] probe: all " << CANDIDATE_COUNT
-                << " candidates tried; restarting cycle" << std::endl;
+            Emit(report, "[Equip] probe: all candidates tried; restarting cycle");
             next = 0;
         }
 
@@ -266,18 +316,22 @@ namespace EquipmentProbe
 
         // Logged (and flushed) before the call so a hard crash still tells
         // us which candidate died.
-        std::cout << "[Equip] probe " << next << "/" << CANDIDATE_COUNT
-            << ": vtbl slot " << candidate.slot << " @ 0x" << std::hex << candidate.va << std::dec
-            << " (this=clothingTC, arg=" << DefNameOf(piece) << ")" << std::endl;
+        sprintf_s(buf, "[Equip] probe %u/%u: vtbl slot %d @ 0x%X (this=clothingTC, arg=%s)",
+            (unsigned)next, (unsigned)CANDIDATE_COUNT, candidate.slot,
+            (unsigned)candidate.va, defName.c_str());
+        Emit(report, buf);
+        ObjectInspector::AppendToLogFile(report);
+        report.clear();
 
         unsigned long exceptionCode = 0;
-        int result = GuardedThiscall1(candidate.va, clothing, piece, &exceptionCode);
+        int result = GuardedThiscall1(candidate.va, clothing, item, &exceptionCode);
 
         if (exceptionCode)
-            std::cout << "[Equip] probe: EXCEPTION 0x" << std::hex << exceptionCode << std::dec
-                << " (caught; game state may be unstable)" << std::endl;
+            sprintf_s(buf, "[Equip] probe: EXCEPTION 0x%X (caught; game state may be unstable)",
+                (unsigned)exceptionCode);
         else
-            std::cout << "[Equip] probe: returned " << result
-                << " - did anything change on the hero?" << std::endl;
+            sprintf_s(buf, "[Equip] probe: returned %d - did anything change on the hero?", result);
+        Emit(report, buf);
+        ObjectInspector::AppendToLogFile(report);
     }
 }
