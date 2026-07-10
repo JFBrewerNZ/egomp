@@ -113,13 +113,13 @@ namespace
     }
 
     // Unidentified 1-argument CTCInventoryClothing virtuals (vtable
-    // 0x124356C), ranked by static analysis; see RE-NOTES.md.
+    // 0x124356C), ranked by static analysis; see RE-NOTES.md. Slot 0 is
+    // excluded: MSVC puts the scalar deleting destructor there.
     const struct { int slot; uintptr_t va; } CANDIDATES[] = {
         { 12, 0x5BFB96 },
         { 26, 0x5B3E4E },
         { 36, 0x5B5BE6 },
         { 11, 0x5B9641 },
-        {  0, 0x4E7D7B },
         { 77, 0x5B76D1 },
     };
     const size_t CANDIDATE_COUNT = sizeof(CANDIDATES) / sizeof(CANDIDATES[0]);
@@ -206,6 +206,23 @@ namespace EquipmentProbe
             ObjectInspector::Dump("clothing TC (auto-dump: 0 worn found)", clothing, 0x200);
         if (weapons && !melee && !ranged)
             ObjectInspector::Dump("weapons TC (auto-dump: no weapons found)", weapons, 0x200);
+
+        // Category-record tables (both inventories keep {CInventoryCategoryDef*,
+        // ownerTC*, ...} records at stride 0x2C behind +0x24/+0x28) — the
+        // worn/carried item per category is expected inside these records;
+        // raw-dump them so the record layout can be decoded offline.
+        if (clothing)
+        {
+            const void* table = *(const void* const*)((const char*)clothing + 0x24);
+            if (ObjectInspector::IsReadableMemory(table, 4))
+                ObjectInspector::DumpRaw("clothing category records (+0x24)", table, 0x80);
+        }
+        if (weapons)
+        {
+            const void* table = *(const void* const*)((const char*)weapons + 0x28);
+            if (ObjectInspector::IsReadableMemory(table, 4))
+                ObjectInspector::DumpRaw("weapons category records (+0x28)", table, 0x80);
+        }
     }
 
     void ProbeNextCandidate(CThingPlayerCreature* creature)
@@ -213,16 +230,30 @@ namespace EquipmentProbe
         static size_t next = 0;
 
         void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING);
-        CThing* pieces[1] = {};
+        CThing* pieces[WORN_MAX_SLOTS] = {};
+        size_t count = clothing ? FindWornPieces(clothing, pieces, WORN_MAX_SLOTS) : 0;
 
-        if (!clothing || !FindWornPieces(clothing, pieces, 1))
+        // The +0x14C pool also tracks unrelated armoured world objects
+        // (buildings!); only accept hero-ish item defs as the probe
+        // argument so a garbage pointer can't masquerade as clothing.
+        CThing* piece = nullptr;
+        for (size_t i = 0; i < count && !piece; i++)
         {
-            std::cout << "[Equip] probe: no worn clothing found on this hero"
+            std::string defName = DefNameOf(pieces[i]);
+            if (defName.find("HERO") != std::string::npos
+                || defName.find("OBJECT_") == 0)
+                piece = pieces[i];
+            else
+                std::cout << "[Equip] probe: skipping non-clothing pool entry "
+                    << defName << std::endl;
+        }
+
+        if (!piece)
+        {
+            std::cout << "[Equip] probe: no plausible worn clothing found on this hero"
                 " (check NUMPAD8 output first)" << std::endl;
             return;
         }
-
-        CThing* piece = pieces[0];
 
         if (next >= CANDIDATE_COUNT)
         {
