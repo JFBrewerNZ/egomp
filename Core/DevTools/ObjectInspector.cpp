@@ -99,6 +99,11 @@ namespace
 
 namespace ObjectInspector
 {
+    bool IsReadableMemory(const void* p, size_t bytes)
+    {
+        return IsReadable(p, bytes);
+    }
+
     const char* GetRttiName(const void* object)
     {
         if (!IsReadable(object, sizeof(void*)))

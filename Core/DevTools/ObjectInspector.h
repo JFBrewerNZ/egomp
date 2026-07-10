@@ -17,6 +17,9 @@ namespace ObjectInspector
     // vtable/RTTI chain inside Fable.exe.
     const char* GetRttiName(const void* object);
 
+    // VirtualQuery-based readability check, exported for other probes.
+    bool IsReadableMemory(const void* p, size_t bytes);
+
     void Dump(const char* label, const void* object, size_t bytes);
 
     // Every dword of a buffer: index, hex value, RTTI class if it points at

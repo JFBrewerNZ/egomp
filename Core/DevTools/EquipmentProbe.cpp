@@ -19,12 +19,13 @@ namespace
     const int TC_ID_INVENTORY_CLOTHING = 0x12;
     const int TC_ID_INVENTORY_WEAPONS = 0x13;
 
-    // CTCInventoryClothing worn-armour slots: array of
-    // {CThingObject* piece, CHitLocationDef*, CArmourDef*, ...} entries,
-    // stride 0x28, first entry 0x28 into the buffer.
+    // CTCInventoryClothing+0x14C points into a pool holding worn-armour
+    // entries of {CThingObject* piece, CHitLocationDef*, CArmourDef*} at
+    // irregular positions (observed strides vary between sessions), so worn
+    // pieces are found by scanning for that pointer-triple pattern rather
+    // than by fixed offsets.
     const size_t WORN_ARRAY_OFFSET = 0x14C;
-    const size_t WORN_FIRST_ENTRY = 0x28;
-    const size_t WORN_STRIDE = 0x28;
+    const size_t WORN_SCAN_DWORDS = 0x140;
     const size_t WORN_MAX_SLOTS = 8;
 
     // CTCInventoryWeapons carried-weapon members (serializer @0x5C3A95):
@@ -82,12 +83,33 @@ namespace
         return nullptr;
     }
 
-    CThing* WornPiece(void* clothingTC, size_t slot)
+    bool RttiContains(const void* object, const char* substring)
     {
-        const char* array = *(const char* const*)((const char*)clothingTC + WORN_ARRAY_OFFSET);
-        if (!array)
-            return nullptr;
-        return AsThing(*(void* const*)(array + WORN_FIRST_ENTRY + slot * WORN_STRIDE));
+        const char* rtti = ObjectInspector::GetRttiName(object);
+        return rtti && strstr(rtti, substring);
+    }
+
+    size_t FindWornPieces(void* clothingTC, CThing** out, size_t max)
+    {
+        const char* pool = *(const char* const*)((const char*)clothingTC + WORN_ARRAY_OFFSET);
+        size_t found = 0;
+
+        for (size_t i = 0; found < max && i + 2 < WORN_SCAN_DWORDS; i++)
+        {
+            const char* slot = pool + i * sizeof(void*);
+            if (!ObjectInspector::IsReadableMemory(slot, 3 * sizeof(void*)))
+                break;
+
+            void* const* dwords = (void* const*)slot;
+            if (RttiContains(dwords[1], "HitLocationDef")
+                && RttiContains(dwords[2], "ArmourDef"))
+            {
+                if (CThing* piece = AsThing(dwords[0]))
+                    out[found++] = piece;
+            }
+        }
+
+        return found;
     }
 
     // Unidentified 1-argument CTCInventoryClothing virtuals (vtable
@@ -121,15 +143,18 @@ namespace EquipmentProbe
 {
     void DumpEquipment(CThingPlayerCreature* creature)
     {
-        std::cout << "[Equip] --- equipment of hero @ " << creature << " ---" << std::endl;
+        std::cout << "[Equip] --- equipment of hero @ " << creature
+            << " (" << DefNameOf((CThing*)creature) << ") ---" << std::endl;
 
         if (void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING))
         {
-            for (size_t slot = 0; slot < WORN_MAX_SLOTS; slot++)
-            {
-                if (CThing* piece = WornPiece(clothing, slot))
-                    std::cout << "[Equip] worn[" << slot << "] = " << DefNameOf(piece) << std::endl;
-            }
+            CThing* pieces[WORN_MAX_SLOTS] = {};
+            size_t count = FindWornPieces(clothing, pieces, WORN_MAX_SLOTS);
+            std::cout << "[Equip] clothing TC @ " << clothing
+                << ", worn pieces found: " << count << std::endl;
+
+            for (size_t i = 0; i < count; i++)
+                std::cout << "[Equip] worn[" << i << "] = " << DefNameOf(pieces[i]) << std::endl;
         }
         else
             std::cout << "[Equip] no CTCInventoryClothing found" << std::endl;
@@ -137,10 +162,12 @@ namespace EquipmentProbe
         if (void* weapons = FindTC(creature, TC_ID_INVENTORY_WEAPONS))
         {
             const char* base = (const char*)weapons;
-            if (CThing* melee = ThingFromIntelligentPointer(base + MELEE_CARRIED_OFFSET))
-                std::cout << "[Equip] melee carried = " << DefNameOf(melee) << std::endl;
-            if (CThing* ranged = ThingFromIntelligentPointer(base + RANGED_CARRIED_OFFSET))
-                std::cout << "[Equip] ranged carried = " << DefNameOf(ranged) << std::endl;
+            CThing* melee = ThingFromIntelligentPointer(base + MELEE_CARRIED_OFFSET);
+            CThing* ranged = ThingFromIntelligentPointer(base + RANGED_CARRIED_OFFSET);
+
+            std::cout << "[Equip] weapons TC @ " << weapons
+                << ", melee = " << (melee ? DefNameOf(melee) : "<none>")
+                << ", ranged = " << (ranged ? DefNameOf(ranged) : "<none>") << std::endl;
         }
         else
             std::cout << "[Equip] no CTCInventoryWeapons found" << std::endl;
@@ -153,13 +180,16 @@ namespace EquipmentProbe
         static size_t next = 0;
 
         void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING);
-        CThing* piece = clothing ? WornPiece(clothing, 0) : nullptr;
+        CThing* pieces[1] = {};
 
-        if (!piece)
+        if (!clothing || !FindWornPieces(clothing, pieces, 1))
         {
-            std::cout << "[Equip] probe: need CTCInventoryClothing with a worn slot 0" << std::endl;
+            std::cout << "[Equip] probe: no worn clothing found on this hero"
+                " (check NUMPAD8 output first)" << std::endl;
             return;
         }
+
+        CThing* piece = pieces[0];
 
         if (next >= CANDIDATE_COUNT)
         {
