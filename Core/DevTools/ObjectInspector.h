@@ -18,4 +18,14 @@ namespace ObjectInspector
     const char* GetRttiName(const void* object);
 
     void Dump(const char* label, const void* object, size_t bytes);
+
+    // Every dword of a buffer: index, hex value, RTTI class if it points at
+    // an object. For understanding list/pair layouts (e.g. the creature's
+    // thing-component list).
+    void DumpRaw(const char* label, const void* buffer, size_t dwords);
+
+    // Scans a buffer of dwords and runs Dump() on each pointed-at object
+    // whose RTTI class name contains any of the given substrings.
+    void DumpMatchingObjects(const char* label, const void* buffer, size_t dwords,
+        const char* const* substrings, size_t substringCount, size_t objectBytes);
 }

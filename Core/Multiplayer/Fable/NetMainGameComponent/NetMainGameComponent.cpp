@@ -105,27 +105,53 @@ void NetMainGameComponent::Options()
     std::cout << "[EgoMP] Edit EgoMP.ini to change these settings." << std::endl;
 
     if (config.debugKeys)
-        std::cout << "[EgoMP] NUMPAD5: dump local hero component map (debug)" << std::endl;
+        std::cout << "[EgoMP] NUMPAD5/6/7: inspect hero / raw TC list / inventory TCs (debug)" << std::endl;
 }
+
+// Offset of the thing-component list pointer inside CThing[PlayerCreature],
+// discovered empirically with the NUMPAD5 dump (entries alternate
+// id/pointer; validated by PhysicsTC at +0x60 matching list entry [1]).
+static const size_t TC_LIST_OFFSET = 0x44;
+static const size_t TC_LIST_DWORDS = 0x100;
 
 void NetMainGameComponent::HandleDebugKeys()
 {
     if (!Config::Get().debugKeys || !worldReady)
         return;
 
-    if (GetAsyncKeyState(VK_NUMPAD5) & 1)
+    bool inspectCreature = (GetAsyncKeyState(VK_NUMPAD5) & 1) != 0;
+    bool inspectTcList = (GetAsyncKeyState(VK_NUMPAD6) & 1) != 0;
+    bool inspectInventories = (GetAsyncKeyState(VK_NUMPAD7) & 1) != 0;
+
+    if (!inspectCreature && !inspectTcList && !inspectInventories)
+        return;
+
+    CPlayerManager* playerManager = mainGameComponent->GetPlayerManager();
+    CPlayer* player = playerManager ? playerManager->GetPlayer(0) : nullptr;
+    CThingPlayerCreature* creature = player ? player->GetPControlledCreature() : nullptr;
+
+    if (!creature)
     {
-        CPlayerManager* playerManager = mainGameComponent->GetPlayerManager();
-        CPlayer* player = playerManager ? playerManager->GetPlayer(0) : nullptr;
-        CThingPlayerCreature* creature = player ? player->GetPControlledCreature() : nullptr;
+        std::cout << "[EgoMP] Inspect: no local hero creature" << std::endl;
+        return;
+    }
 
-        if (!creature)
-        {
-            std::cout << "[EgoMP] Inspect: no local hero creature" << std::endl;
-            return;
-        }
-
+    if (inspectCreature)
         ObjectInspector::Dump("local hero creature", creature, 0x600);
+
+    const void* tcList = *(const void* const*)((const char*)creature + TC_LIST_OFFSET);
+
+    if (inspectTcList)
+        ObjectInspector::DumpRaw("hero TC list", tcList, TC_LIST_DWORDS);
+
+    if (inspectInventories)
+    {
+        static const char* const interesting[] = {
+            "Inventory", "Morph", "Carrying", "Carryable", "Weapon",
+            "GraphicAppearance", "AppearanceModifiers",
+        };
+        ObjectInspector::DumpMatchingObjects("hero TC list", tcList, TC_LIST_DWORDS,
+            interesting, sizeof(interesting) / sizeof(interesting[0]), 0x200);
     }
 }
 

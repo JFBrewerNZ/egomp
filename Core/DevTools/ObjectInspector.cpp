@@ -12,7 +12,8 @@ namespace
 {
     // Pointers into buffers are followed one level deep; scan this much of
     // each pointed-to buffer looking for component-pointer arrays/lists.
-    const size_t BUFFER_SCAN_DWORDS = 0x40;
+    // (0x40 truncated the hero's ~70-component list mid-way.)
+    const size_t BUFFER_SCAN_DWORDS = 0x100;
 
     struct ModuleRange
     {
@@ -60,6 +61,28 @@ namespace
     {
         std::cout << line << std::endl;
         sink += line + "\n";
+    }
+
+    // Append to EgoMP-inspect.log next to the DLL so results survive the
+    // console and can be shared.
+    void WriteLogFile(const std::string& report)
+    {
+        char modulePath[MAX_PATH] = {};
+        GetModuleFileNameA((HMODULE)&__ImageBase, modulePath, MAX_PATH);
+        std::string logPath(modulePath);
+        size_t slash = logPath.find_last_of("\\/");
+        logPath = logPath.substr(0, slash + 1) + "EgoMP-inspect.log";
+
+        FILE* f = nullptr;
+        if (fopen_s(&f, logPath.c_str(), "a") == 0 && f)
+        {
+            SYSTEMTIME st;
+            GetLocalTime(&st);
+            fprintf(f, "=== %04u-%02u-%02u %02u:%02u:%02u ===\n%s\n",
+                st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
+                report.c_str());
+            fclose(f);
+        }
     }
 
     // ".?AVCTCInventoryClothing@@" -> "CTCInventoryClothing"
@@ -163,24 +186,63 @@ namespace ObjectInspector
         }
 
         Log(report, "[Inspect] done");
+        WriteLogFile(report);
+    }
 
-        // Append to EgoMP-inspect.log next to the DLL so results survive the
-        // console and can be shared.
-        char modulePath[MAX_PATH] = {};
-        GetModuleFileNameA((HMODULE)&__ImageBase, modulePath, MAX_PATH);
-        std::string logPath(modulePath);
-        size_t slash = logPath.find_last_of("\\/");
-        logPath = logPath.substr(0, slash + 1) + "EgoMP-inspect.log";
+    void DumpRaw(const char* label, const void* buffer, size_t dwords)
+    {
+        std::string report;
 
-        FILE* f = nullptr;
-        if (fopen_s(&f, logPath.c_str(), "a") == 0 && f)
+        char header[256];
+        sprintf_s(header, "[Inspect] raw %s @ %p, %u dwords", label, buffer, (unsigned)dwords);
+        Log(report, header);
+
+        for (size_t i = 0; i < dwords; i++)
         {
-            SYSTEMTIME st;
-            GetLocalTime(&st);
-            fprintf(f, "=== %04u-%02u-%02u %02u:%02u:%02u ===\n%s\n",
-                st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
-                report.c_str());
-            fclose(f);
+            const char* slot = (const char*)buffer + i * sizeof(void*);
+            if (!IsReadable(slot, sizeof(void*)))
+            {
+                Log(report, "  (unreadable, stopping)");
+                break;
+            }
+
+            const void* value = *(const void* const*)slot;
+            const char* name = GetRttiName(value);
+
+            char line[256];
+            sprintf_s(line, "  [%3u] +0x%03X  %08X%s%s",
+                (unsigned)i, (unsigned)(i * sizeof(void*)), (unsigned)(uintptr_t)value,
+                name ? "  " : "", name ? Demangle(name).c_str() : "");
+            Log(report, line);
+        }
+
+        WriteLogFile(report);
+    }
+
+    void DumpMatchingObjects(const char* label, const void* buffer, size_t dwords,
+        const char* const* substrings, size_t substringCount, size_t objectBytes)
+    {
+        std::cout << "[Inspect] scanning " << label << " for matching components..." << std::endl;
+
+        for (size_t i = 0; i < dwords; i++)
+        {
+            const char* slot = (const char*)buffer + i * sizeof(void*);
+            if (!IsReadable(slot, sizeof(void*)))
+                break;
+
+            const void* value = *(const void* const*)slot;
+            const char* name = GetRttiName(value);
+            if (!name)
+                continue;
+
+            for (size_t s = 0; s < substringCount; s++)
+            {
+                if (strstr(name, substrings[s]))
+                {
+                    Dump(Demangle(name).c_str(), value, objectBytes);
+                    break;
+                }
+            }
         }
     }
 }
