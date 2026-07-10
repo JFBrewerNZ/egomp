@@ -32,6 +32,30 @@ Save-field names confirm the state we need to replicate per player:
 `LastWeaponEquippedID` (wielded), clothing worn per slot
 (`INVENTORY_CATEGORY_CLOTHES_{HEADWEAR,TORSO_WEAR,LEGWEAR,GLOVES,FOOTWEAR,SUITS}`).
 
+## Live-probe findings (2026-07-10, NUMPAD5/6/7 on a late-game hero)
+
+**Thing-component list** at `CThing+0x44` -> array of `{int typeId, CTC* tc}`
+pairs. Hero's relevant entries: CTCHeroMorph=0x03, CTCInventory=0x11,
+**CTCInventoryClothing=0x12**, **CTCInventoryWeapons=0x13**, CTCHero=0x29,
+CTCCarrying=0x46, CTCGraphicAppearance=0x5B (also at `CThing+0x64`),
+CTCHeroAttachableAppearanceModifiers=0x5E. `CThing+0x70` = CThingCreatureDef.
+
+**CTCInventoryClothing** (per NUMPAD7 dump): `+0x004` owner creature,
+`+0x068` CInventoryDef, `+0x14C` -> **worn-armour slot array**: entries of
+`{CThingObject* wornPiece, CHitLocationDef*, CArmourDef*}` (stride 0x28,
+first entry 0x28 into the buffer; 5 populated slots on a fully-dressed
+hero). The worn pieces are real CThings -> `CThing::GetDefName` (already in
+the SDK) yields their def names for transmission.
+
+**CTCInventoryWeapons** (serializer disassembly @0x5C3A95): `+0x140`
+MeleeWeaponCarried, `+0x150` RangedWeaponCarried (both look like
+CIntelligentPointer&lt;CThing&gt;, 0x10 bytes), `+0x13C` area =
+ActiveMelee/RangedWeaponDefIndex2, `+0x160/164/168/16C` =
+Confiscated/PreviouslyWielded def-name ints.
+CTCInventoryClothing's own serializer (@0x5B369A) only writes "InGameSave"
+and delegates — the clothing list is serialized by the base
+CTCInventory::Serialize (@0x591A66), not yet mapped.
+
 ## Next steps
 
 1. ~~Locate the hero's TC components~~ → **probe built** (2026-07-10):
