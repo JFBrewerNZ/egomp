@@ -45,7 +45,9 @@ void __fastcall CWorld::HUpdateRegionLoad(CWorld* _this, void* _EDX)
 {
     OUpdateRegionLoad(_this);
 
-    for (const auto& pair : updateRegionLoadCallbacks)
+    // Iterate a snapshot: callbacks may unregister themselves during dispatch.
+    auto callbacks = updateRegionLoadCallbacks;
+    for (const auto& pair : callbacks)
     {
         if (pair.second)
             pair.second();

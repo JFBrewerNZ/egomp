@@ -103,13 +103,13 @@ bool Network::Disconnect()
 {
 	if (!peer)
 	{
-		MessageBoxW(NULL, L"[Network::Disconnect] Failed to get RakPeerInterface instance!", L"Error", MB_OK);
+		std::cout << "[Network::Disconnect] Failed to get RakPeerInterface instance!" << std::endl;
 		return false;
 	}
 
 	if (!peer->IsActive())
 	{
-		MessageBoxW(NULL, L"[Network::Disconnect] Peer is not active!", L"Error", MB_OK);
+		std::cout << "[Network::Disconnect] Peer is not active!" << std::endl;
 		return false;
 	}
 

@@ -2,6 +2,12 @@
 
 void NetPlayerManager::ConnectionNotification(int networkId, SystemAddress systemAddress)
 {
+    if (!localNetPlayer)
+    {
+        std::cout << "[NetPlayerManager::ConnectionNotification]: !localNetPlayer" << std::endl;
+        return;
+    }
+
     int localId = localNetPlayer->GetLocalId();
     CThingPlayerCreature* creature = GetCreatureFromLocalId(localId);
 

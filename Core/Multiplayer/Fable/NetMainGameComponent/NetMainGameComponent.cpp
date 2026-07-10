@@ -39,8 +39,13 @@ void NetMainGameComponent::ClearCallbacks()
 
 void NetMainGameComponent::HandleMainGameComponentShutdown()
 {
-    network->Disconnect();
-    if (network && !network->IsActive())
+    if (!network)
+        return;
+
+    if (network->IsActive())
+        network->Disconnect();
+
+    if (!network->IsActive())
         Disconnect();
 }
 

@@ -48,7 +48,7 @@ void NetPlayerManager::CreateNetPlayer(int networkId, C3DVector position, int de
     ApplyNetPlayerMovement(networkId);
     ApplyNetPlayerRotation(networkId);
 
-    if (localNetPlayer->GetNetworkId() == 0)
+    if (localNetPlayer && localNetPlayer->GetNetworkId() == 0)
     {
         BroadcastCreateNetPlayer(networkId, defGlobalIndex, position);
         BroadcastCreateNetPlayers(networkId);
@@ -57,6 +57,9 @@ void NetPlayerManager::CreateNetPlayer(int networkId, C3DVector position, int de
 
 void NetPlayerManager::CreateNetPlayers(int networkId, C3DVector position, int defGlobalIndex)
 {
+    if (!localNetPlayer)
+        return;
+
     if (networkId != localNetPlayer->GetNetworkId() && GetLocalIdFromNetworkId(networkId) == -1)
     {
         CreateNetPlayer(networkId, position, defGlobalIndex);
@@ -69,54 +72,39 @@ void NetPlayerManager::DestroyLocalNetPlayer()
         return;
 
     int networkId = localNetPlayer->GetNetworkId();
-    int localId = GetLocalIdFromNetworkId(networkId);
-    CPlayer* localPlayer = playerManager->GetPlayer(localId);
 
-    if (!localPlayer)
-    {
-        std::cout << "[NetPlayerManager::DestroyLocalNetPlayer]: !localPlayer" << std::endl;
-        return;
-    }
-
-    CThingPlayerCreature* creature = localPlayer->GetPControlledCreature();
-
-    if (!creature)
-    {
-        std::cout << "[NetPlayerManager::DestroyLocalNetPlayer]: !creature" << std::endl;
-        return;
-    }
-
-    creature->RemoveResolveMovementAccelerationCallback("ResolveMovementAcceleration" + std::to_string(networkId));
-    creature->RemoveResolveFacingDirectionCallback("ResolveFacingDirection" + std::to_string(networkId));
+    CThingPlayerCreature::RemoveResolveMovementAccelerationCallback("ResolveMovementAcceleration" + std::to_string(networkId));
+    CThingPlayerCreature::RemoveResolveFacingDirectionCallback("ResolveFacingDirection" + std::to_string(networkId));
 
     localNetPlayer.reset();
 }
 
 void NetPlayerManager::DestroyNetPlayer(int networkId)
 {
+    CThingPlayerCreature::RemoveResolveMovementAccelerationCallback("ResolveMovementAcceleration" + std::to_string(networkId));
+    CThingPlayerCreature::RemoveResolveFacingDirectionCallback("ResolveFacingDirection" + std::to_string(networkId));
+
     int localId = GetLocalIdFromNetworkId(networkId);
-    CPlayer* player = playerManager->GetPlayer(localId);
+    CPlayer* player = localId != -1 ? playerManager->GetPlayer(localId) : nullptr;
 
-    if (!player)
+    if (player)
     {
+        CThingPlayerCreature* creature = player->GetPControlledCreature();
+
+        if (creature)
+        {
+            player->UninitCharacter();
+            player->Uninitialise();
+        }
+        else
+            std::cout << "[NetPlayerManager::DestroyNetPlayer]: !creature: " << networkId << std::endl;
+    }
+    else
         std::cout << "[NetPlayerManager::DestroyNetPlayer]: !player: " << networkId << std::endl;
-        return;
-    }
 
-    CThingPlayerCreature* creature = player->GetPControlledCreature();
-
-    if (!creature)
-    {
-        std::cout << "[NetPlayerManager::DestroyNetPlayer]: !creature: " << networkId << std::endl;
-        return;
-    }
-
-    creature->RemoveResolveMovementAccelerationCallback("ResolveMovementAcceleration" + std::to_string(networkId));
-    creature->RemoveResolveFacingDirectionCallback("ResolveFacingDirection" + std::to_string(networkId));
-
-    player->UninitCharacter();
-    player->Uninitialise();
-
+    // Always remove the entry and notify clients, even when the game-side
+    // lookups fail — otherwise DestroyNetPlayers loops forever and other
+    // clients keep a ghost player.
     for (size_t i = 0; i < netPlayers.size(); ++i)
     {
         if (netPlayers[i] && netPlayers[i]->GetNetworkId() == networkId)
@@ -126,7 +114,7 @@ void NetPlayerManager::DestroyNetPlayer(int networkId)
         }
     }
 
-    if (localNetPlayer->GetNetworkId() == 0)
+    if (localNetPlayer && localNetPlayer->GetNetworkId() == 0)
         BroadcastDestroyNetPlayer(networkId);
 }
 

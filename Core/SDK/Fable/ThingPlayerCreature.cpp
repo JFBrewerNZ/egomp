@@ -1,7 +1,7 @@
 #include "ThingPlayerCreature.h"
 
-std::map<std::string, std::function<void()>> CThingPlayerCreature::resolveMovementAccelerationCallbacks;
-std::map<std::string, std::function<void()>> CThingPlayerCreature::resolveFacingDirectionCallbacks;
+std::map<std::string, std::function<void(CThingPlayerCreature*)>> CThingPlayerCreature::resolveMovementAccelerationCallbacks;
+std::map<std::string, std::function<void(CThingPlayerCreature*)>> CThingPlayerCreature::resolveFacingDirectionCallbacks;
 
 CThingPlayerCreature* (__fastcall* CThingPlayerCreature::OCreate)(long, C3DVector const&, long, CThingPlayerCreatureInit const &) = nullptr;
 CThingPlayerCreature* __fastcall CThingPlayerCreature::HCreate(long global_def_index, C3DVector const& pos, long player, CThingPlayerCreatureInit const &init)
@@ -22,7 +22,7 @@ void __fastcall CThingPlayerCreature::HResolveMovementAcceleration(CThingPlayerC
 	for (const auto& pair : resolveMovementAccelerationCallbacks)
 	{
 		if (pair.second)
-			pair.second();
+			pair.second(_this);
 	}
 }
 
@@ -34,14 +34,14 @@ void __fastcall CThingPlayerCreature::HResolveFacingDirection(CThingPlayerCreatu
 	for (const auto& pair : resolveFacingDirectionCallbacks)
 	{
 		if (pair.second)
-			pair.second();
+			pair.second(_this);
 	}
 }
 
 bool(__thiscall* CThingPlayerCreature::OWorldUpdate)(CThingPlayerCreature*) = nullptr;
 bool __fastcall CThingPlayerCreature::HWorldUpdate(CThingPlayerCreature* _this, void* _EDX)
 {
-	OWorldUpdate(_this);
+	return OWorldUpdate(_this);
 }
 
 void(__thiscall* CThingPlayerCreature::OUpdateWalkingControlForces)(CThingPlayerCreature*) = nullptr;

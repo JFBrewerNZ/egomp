@@ -3,6 +3,10 @@
 CThingPlayerCreature* NetPlayerManager::GetCreatureFromNetworkId(int networkId) const
 {
     int localId = GetLocalIdFromNetworkId(networkId);
+
+    if (localId == -1)
+        return nullptr;
+
     CPlayer* player = playerManager->GetPlayer(localId);
 
     if (!player)

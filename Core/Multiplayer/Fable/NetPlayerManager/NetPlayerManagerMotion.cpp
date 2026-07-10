@@ -2,22 +2,18 @@
 
 void NetPlayerManager::ApplyNetPlayerMovement(int networkId)
 {
-    CThingPlayerCreature* creature = GetCreatureFromNetworkId(networkId);
+    CThingPlayerCreature::AddResolveMovementAccelerationCallback("ResolveMovementAcceleration" + std::to_string(networkId), [this, networkId](CThingPlayerCreature* self) {
+        if (self != GetCreatureFromNetworkId(networkId))
+            return;
 
-    if (!creature) {
-        std::cout << "[NetPlayerManager::ApplyNetPlayerMovement]: !creature" << std::endl;
-        return;
-    }
-
-    creature->AddResolveMovementAccelerationCallback("ResolveMovementAcceleration" + std::to_string(networkId), [this, networkId, creature]() {
         for (auto& netPlayer : netPlayers)
         {
             if (netPlayer && netPlayer->GetNetworkId() == networkId)
             {
-                creature->MovementAcceleration = netPlayer->GetMovementAcceleration();
+                self->MovementAcceleration = netPlayer->GetMovementAcceleration();
 
                 C3DVector remotePosition = netPlayer->GetPosition();
-                C3DVector position = *((CThing*)creature)->GetPos();
+                C3DVector position = *((CThing*)self)->GetPos();
 
                 float dx = remotePosition.X - position.X;
                 float dy = remotePosition.Y - position.Y;
@@ -26,7 +22,7 @@ void NetPlayerManager::ApplyNetPlayerMovement(int networkId)
                 float driftSq = (dx * dx) + (dy * dy) + (dz * dz);
 
                 if (driftSq > 1)
-                    ((CThing*)creature)->PhysicsTC->SetPosition(remotePosition);
+                    ((CThing*)self)->PhysicsTC->SetPosition(remotePosition);
 
                 return;
             }
@@ -36,21 +32,17 @@ void NetPlayerManager::ApplyNetPlayerMovement(int networkId)
 
 void NetPlayerManager::ApplyNetPlayerRotation(int networkId)
 {
-    CThingPlayerCreature* creature = GetCreatureFromNetworkId(networkId);
+    CThingPlayerCreature::AddResolveFacingDirectionCallback("ResolveFacingDirection" + std::to_string(networkId), [this, networkId](CThingPlayerCreature* self) {
+        if (self != GetCreatureFromNetworkId(networkId))
+            return;
 
-    if (!creature) {
-        std::cout << "[NetPlayerManager::ApplyNetPlayerRotation]: !creature" << std::endl;
-        return;
-    }
-
-    creature->AddResolveFacingDirectionCallback("ResolveFacingDirection" + std::to_string(networkId), [this, networkId, creature]() {
         for (auto& netPlayer : netPlayers)
         {
             if (netPlayer && netPlayer->GetNetworkId() == networkId)
             {
                 CRightHandedSet rhSet = netPlayer->GetRHSet();
 
-                CTCPhysicsBase* physicsTC = ((CThing*)creature)->PhysicsTC;
+                CTCPhysicsBase* physicsTC = ((CThing*)self)->PhysicsTC;
                 ((CTCPhysicsStandard*)physicsTC)->SetRHSet(rhSet);
 
                 return;
@@ -61,16 +53,15 @@ void NetPlayerManager::ApplyNetPlayerRotation(int networkId)
 
 void NetPlayerManager::BroadcastLocalNetPlayerMovement(int networkId)
 {
-    CThingPlayerCreature* creature = GetCreatureFromNetworkId(networkId);
+    CThingPlayerCreature::AddResolveMovementAccelerationCallback("ResolveMovementAcceleration" + std::to_string(networkId), [this, networkId](CThingPlayerCreature* self) {
+        if (!localNetPlayer || localNetPlayer->GetNetworkId() != networkId)
+            return;
 
-    if (!creature) {
-        std::cout << "[NetPlayerManager::BroadcastLocalNetPlayerMovement]: !creature" << std::endl;
-        return;
-    }
+        if (self != GetCreatureFromLocalId(localNetPlayer->GetLocalId()))
+            return;
 
-    creature->AddResolveMovementAccelerationCallback("ResolveMovementAcceleration" + std::to_string(networkId), [this, networkId, creature]() {
-        C3DVector position = *((CThing*)creature)->GetPos();
-        C3DVector movementAcceleration = creature->MovementAcceleration;
+        C3DVector position = *((CThing*)self)->GetPos();
+        C3DVector movementAcceleration = self->MovementAcceleration;
 
         SLNet::BitStream bs;
         bs.Write((SLNet::MessageID)ID_PLAYER_MOVEMENT);
@@ -88,15 +79,14 @@ void NetPlayerManager::BroadcastLocalNetPlayerMovement(int networkId)
 }
 void NetPlayerManager::BroadcastLocalNetPlayerRotation(int networkId)
 {
-    CThingPlayerCreature* creature = GetCreatureFromNetworkId(networkId);
+    CThingPlayerCreature::AddResolveFacingDirectionCallback("ResolveFacingDirection" + std::to_string(networkId), [this, networkId](CThingPlayerCreature* self) {
+        if (!localNetPlayer || localNetPlayer->GetNetworkId() != networkId)
+            return;
 
-    if (!creature) {
-        std::cout << "[NetPlayerManager::BroadcastLocalNetPlayerRotation]: !creature" << std::endl;
-        return;
-    }
+        if (self != GetCreatureFromLocalId(localNetPlayer->GetLocalId()))
+            return;
 
-    creature->AddResolveFacingDirectionCallback("ResolveFacingDirection" + std::to_string(networkId), [this, networkId, creature]() {
-        CTCPhysicsBase* physicsTC = ((CThing*)creature)->PhysicsTC;
+        CTCPhysicsBase* physicsTC = ((CThing*)self)->PhysicsTC;
         CRightHandedSet* rhSet = ((CTCPhysicsStandard*)physicsTC)->GetRHSet();
 
         SLNet::BitStream bs;

@@ -18,17 +18,20 @@ public:
 
 	static CThingPlayerCreature* Create(long, C3DVector const&, long, CThingPlayerCreatureInit const&);
 
-	void AddResolveMovementAccelerationCallback(const std::string& id, std::function<void()> callback) { resolveMovementAccelerationCallbacks[id] = callback; }
-	void RemoveResolveMovementAccelerationCallback(const std::string& id) { resolveMovementAccelerationCallbacks.erase(id); }
+	// Callbacks are global (the maps are static): they run for every creature's resolve,
+	// receiving the resolving creature so they can filter. Add/Remove are static so
+	// callbacks can be unregistered without a live creature pointer.
+	static void AddResolveMovementAccelerationCallback(const std::string& id, std::function<void(CThingPlayerCreature*)> callback) { resolveMovementAccelerationCallbacks[id] = callback; }
+	static void RemoveResolveMovementAccelerationCallback(const std::string& id) { resolveMovementAccelerationCallbacks.erase(id); }
 
-	void AddResolveFacingDirectionCallback(const std::string& id, std::function<void()> callback) { resolveFacingDirectionCallbacks[id] = callback; }
-	void RemoveResolveFacingDirectionCallback(const std::string& id) { resolveFacingDirectionCallbacks.erase(id); }
+	static void AddResolveFacingDirectionCallback(const std::string& id, std::function<void(CThingPlayerCreature*)> callback) { resolveFacingDirectionCallbacks[id] = callback; }
+	static void RemoveResolveFacingDirectionCallback(const std::string& id) { resolveFacingDirectionCallbacks.erase(id); }
 
 	static void Hook();
 
 private:
-	static std::map<std::string, std::function<void()>> resolveMovementAccelerationCallbacks;
-	static std::map<std::string, std::function<void()>> resolveFacingDirectionCallbacks;
+	static std::map<std::string, std::function<void(CThingPlayerCreature*)>> resolveMovementAccelerationCallbacks;
+	static std::map<std::string, std::function<void(CThingPlayerCreature*)>> resolveFacingDirectionCallbacks;
 
 	static CThingPlayerCreature* (__fastcall* OCreate)(long, C3DVector const&, long, CThingPlayerCreatureInit const &);
 	static CThingPlayerCreature* __fastcall HCreate(long global_def_index, C3DVector const& pos, long player, CThingPlayerCreatureInit const &init);

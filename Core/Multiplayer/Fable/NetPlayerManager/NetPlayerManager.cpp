@@ -1,4 +1,4 @@
-#include "NetPlayerManager.h";
+#include "NetPlayerManager.h"
 
 NetPlayerManager::NetPlayerManager(
     Network* network,
@@ -13,5 +13,14 @@ NetPlayerManager::NetPlayerManager(
 
 NetPlayerManager::~NetPlayerManager()
 {
-	network = nullptr;
+    // The callback maps this manager registers into are static and outlive it;
+    // anything left behind would fire with a dangling `this`.
+    world->RemoveUpdateRegionLoadCallback("BroadcastCreateLocalNetPlayer");
+
+    DestroyLocalNetPlayer();
+
+    while (!netPlayers.empty())
+        DestroyNetPlayer(netPlayers.front()->GetNetworkId());
+
+    network = nullptr;
 }
