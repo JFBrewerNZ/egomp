@@ -28,6 +28,18 @@ public:
     // Called after AddModifier to make changes visible.
     void ResetAndRebuild();
 
+    // Empties the three modifier-set vectors (entries are POD {defIndex,
+    // flags}; capacity is left allocated). Combined with
+    // RebuildAttachments this removes modifiers — including the creature
+    // def's defaults — without needing the game's remove function.
+    void ClearModifiers();
+
+    // The rebuild tail of the reset vfunc, without its re-add-defaults
+    // head: 0x706040 (mark), 0x706510 (clear the attachment map and
+    // rebuild it from the modifier sets), 0x7070D0 (graphics-side
+    // rebuild), then refresh the owner creature's graphic appearance.
+    void RebuildAttachments();
+
     // Def indexes of all currently attached modifiers, across all three
     // modifier sets.
     std::vector<int> GetModifierDefIndexes();

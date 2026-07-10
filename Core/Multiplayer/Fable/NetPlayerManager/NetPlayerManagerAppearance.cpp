@@ -143,22 +143,20 @@ void NetPlayerManager::ApplyNetPlayerAppearance(NetPlayer& netPlayer)
         return;
     }
 
-    std::vector<int> current = appearance->GetModifierDefIndexes();
-    bool changed = false;
+    // Exact-set replacement: clear everything (including the creature
+    // def's default hood/clothes) and apply precisely the sender's set.
+    std::vector<int> sortedCurrent = appearance->GetModifierDefIndexes();
+    std::vector<int> sortedWanted = wanted;
+    std::sort(sortedCurrent.begin(), sortedCurrent.end());
+    std::sort(sortedWanted.begin(), sortedWanted.end());
 
+    if (sortedCurrent == sortedWanted)
+        return;
+
+    appearance->ClearModifiers();
     for (int defIndex : wanted)
-    {
-        if (std::find(current.begin(), current.end(), defIndex) == current.end())
-        {
-            appearance->AddModifier(defIndex);
-            changed = true;
-        }
-    }
-
-    // No RemoveModifier is known yet, so stale modifiers persist until the
-    // creature respawns (which region changes do frequently).
-    if (changed)
-        appearance->ResetAndRebuild();
+        appearance->AddModifier(defIndex);
+    appearance->RebuildAttachments();
 }
 
 void NetPlayerManager::SendNetPlayerAppearancesTo(int networkId)

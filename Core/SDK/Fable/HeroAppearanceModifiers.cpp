@@ -78,6 +78,37 @@ void CTCHeroAttachableAppearanceModifiers::ResetAndRebuild()
     ((void(__thiscall*)(void*))FN_RESET_AND_REBUILD)(this);
 }
 
+void CTCHeroAttachableAppearanceModifiers::ClearModifiers()
+{
+    char* sets = *(char**)((char*)this + MODIFIER_SETS_OFFSET);
+
+    if (!sets)
+        return;
+
+    for (size_t s = 0; s < MODIFIER_SET_COUNT; s++)
+    {
+        char* vec = sets + s * MODIFIER_SET_STRIDE;
+        *(void**)(vec + 4) = *(void**)vec; // end = begin
+    }
+}
+
+void CTCHeroAttachableAppearanceModifiers::RebuildAttachments()
+{
+    ((void(__thiscall*)(void*))0x706040)(this);
+    ((void(__thiscall*)(void*))0x706510)(this);
+    ((void(__thiscall*)(void*))0x7070D0)(this);
+
+    // Owner creature at +0x04, its CTCGraphicAppearance at creature+0x64;
+    // 0x4BF9E0(0xF) is the refresh the reset vfunc performs.
+    void* creature = *(void**)((char*)this + 0x04);
+    if (creature)
+    {
+        void* graphicAppearance = *(void**)((char*)creature + 0x64);
+        if (graphicAppearance)
+            ((void(__thiscall*)(void*, int))0x4BF9E0)(graphicAppearance, 0xF);
+    }
+}
+
 std::vector<int> CTCHeroAttachableAppearanceModifiers::GetModifierDefIndexes()
 {
     std::vector<int> result;

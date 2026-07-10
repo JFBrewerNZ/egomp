@@ -444,46 +444,27 @@ namespace EquipmentProbe
         std::string report;
         char buf[256];
 
-        // Morph-input experiment: force strength/fatness on the LOCAL hero
-        // and watch. If the body responds (bulks up / fattens over a few
-        // seconds), the morph floats are live inputs and the remote-body
-        // problem is a recompute clobber; if nothing happens, the floats
-        // are cached outputs and physique derives from stat levels held
-        // elsewhere. (The former AddModifier/pimp-hat experiment already
-        // proved the modifier pipeline.)
-        void* morph = FindTC(creature, TC_ID_HERO_MORPH);
-        if (!morph)
+        // Modifier-removal experiment: clear ALL modifier sets on the LOCAL
+        // hero and rebuild without re-adding anything. Hair, beard and any
+        // hat should visibly vanish — proving exact-set replacement (the
+        // mechanism used to strip default clothes from remote creatures).
+        CTCHeroAttachableAppearanceModifiers* appearance =
+            CTCHeroAttachableAppearanceModifiers::FromCreature(creature);
+        if (!appearance)
         {
-            Emit(report, "[Equip] probe: no morph TC found");
+            Emit(report, "[Equip] probe: no appearance TC found");
             ObjectInspector::AppendToLogFile(report);
             return;
         }
 
-        float* f = (float*)((char*)morph + MORPH_BLOB_OFFSET);
-        sprintf_s(buf, "[Equip] probe: local morph +0x40 (muscle?) %.3f -> 1.0"
-            " + dirty flag + pump - watch the hero's body!", f[0]);
+        size_t before = appearance->GetModifierDefIndexes().size();
+        appearance->ClearModifiers();
+        appearance->RebuildAttachments();
+        size_t after = appearance->GetModifierDefIndexes().size();
+
+        sprintf_s(buf, "[Equip] probe: stripped all modifiers (%u -> %u)"
+            " - did hair/beard/hat vanish?", (unsigned)before, (unsigned)after);
         Emit(report, buf);
-
-        f[0] = 1.0f; // +0x40: suspected muscle
-
-        // The morph CopyFrom vfunc (0x71CD90) sets this after changing the
-        // inputs; without it the per-frame update never consumes them.
-        *((unsigned char*)morph + 0x3D) = 1;
-
-        // CTCHeroMorph vtable slot 28 @0x71E130: if the dirty flag is set,
-        // posts CMessageOnMorphChanged to the owner creature, recomputes the
-        // morph (0x71DE80), refreshes the graphic appearance and clears the
-        // flag — the full update pump the direct writes were missing.
-        unsigned long exceptionCode = 0;
-        GuardedThiscall0(0x71E130, morph, &exceptionCode);
-
-        if (exceptionCode)
-            sprintf_s(buf, "[Equip] probe: morph pump EXCEPTION 0x%X", (unsigned)exceptionCode);
-        else
-            sprintf_s(buf, "[Equip] probe: morph pump returned, dirty flag now %d"
-                " - did the body change?", (int)*((unsigned char*)morph + 0x3D));
-        Emit(report, buf);
-
         ObjectInspector::AppendToLogFile(report);
     }
 }
