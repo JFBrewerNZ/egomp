@@ -68,15 +68,18 @@ CTCInventory::Serialize (@0x591A66), not yet mapped.
    (untracked, next to the DLL). Expected output: member offsets of
    CTCInventoryClothing / CTCInventoryWeapons / CTCHeroMorph etc. — those
    offsets become SDK struct members.
-2. Read the worn-item state: with component pointers in hand, inspect the
-   components themselves (extend the debug key or add a second one) to find
-   where equipped def indexes live; cross-check against the save-field
-   names above.
-3. Identify apply functions: candidates are vfuncs on the two inventory
-   vtables and the creature-action constructors. Verification plan: extend
-   the debug key to invoke one candidate on the local hero with a known def
-   index and log — iterate until the right function is confirmed
-   (crash-safe: try in a throwaway save).
+2. ~~Read the worn-item state~~ → **solved**, see "Live-probe findings".
+   **NUMPAD8** (Core/DevTools/EquipmentProbe) logs the def names of all worn
+   clothing and carried weapons — the send-side of equipment sync, working.
+3. Identify apply functions — **probe built**: **NUMPAD9** calls the next
+   of six unidentified 1-arg CTCInventoryClothing virtuals (slots
+   12/26/36/11/0/77, chosen by arity scan + worn-array-usage ranking) with
+   worn piece 0 as the argument, SEH-guarded, logging slot+address before
+   the call. Protocol: press NUMPAD9, watch the hero and console, note the
+   slot number of anything interesting (clothes falling off = found the
+   unequip/toggle path). Use a throwaway save. Slot 77 references
+   HERO_SUIT_NAKED / OBJECT_HERO_NO_HAT and reads the worn array — suspected
+   "rebuild visible clothing from worn set".
 4. Wire protocol: extend announce/create payloads with an equipment blob
    (n slots x def index), new ID_PLAYER_EQUIPMENT message on change
    (hook the inventory-changed path once found).

@@ -6,6 +6,7 @@
 #include "NetMainGameComponent.h"
 #include "../../../Config/Config.h"
 #include "../../../DevTools/ObjectInspector.h"
+#include "../../../DevTools/EquipmentProbe.h"
 
 // Delay before the first automatic connect after entering the world, and
 // between retries while unconnected.
@@ -105,7 +106,10 @@ void NetMainGameComponent::Options()
     std::cout << "[EgoMP] Edit EgoMP.ini to change these settings." << std::endl;
 
     if (config.debugKeys)
+    {
         std::cout << "[EgoMP] NUMPAD5/6/7: inspect hero / raw TC list / inventory TCs (debug)" << std::endl;
+        std::cout << "[EgoMP] NUMPAD8: log worn equipment; NUMPAD9: probe next equip-fn candidate (debug)" << std::endl;
+    }
 }
 
 // Offset of the thing-component list pointer inside CThing[PlayerCreature],
@@ -122,8 +126,10 @@ void NetMainGameComponent::HandleDebugKeys()
     bool inspectCreature = (GetAsyncKeyState(VK_NUMPAD5) & 1) != 0;
     bool inspectTcList = (GetAsyncKeyState(VK_NUMPAD6) & 1) != 0;
     bool inspectInventories = (GetAsyncKeyState(VK_NUMPAD7) & 1) != 0;
+    bool dumpEquipment = (GetAsyncKeyState(VK_NUMPAD8) & 1) != 0;
+    bool probeCandidate = (GetAsyncKeyState(VK_NUMPAD9) & 1) != 0;
 
-    if (!inspectCreature && !inspectTcList && !inspectInventories)
+    if (!inspectCreature && !inspectTcList && !inspectInventories && !dumpEquipment && !probeCandidate)
         return;
 
     CPlayerManager* playerManager = mainGameComponent->GetPlayerManager();
@@ -153,6 +159,12 @@ void NetMainGameComponent::HandleDebugKeys()
         ObjectInspector::DumpMatchingObjects("hero TC list", tcList, TC_LIST_DWORDS,
             interesting, sizeof(interesting) / sizeof(interesting[0]), 0x200);
     }
+
+    if (dumpEquipment)
+        EquipmentProbe::DumpEquipment(creature);
+
+    if (probeCandidate)
+        EquipmentProbe::ProbeNextCandidate(creature);
 }
 
 void NetMainGameComponent::Selection() {

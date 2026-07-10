@@ -21,6 +21,9 @@
     <ClInclude Include="Config\Config.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="DevTools\EquipmentProbe.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="DevTools\ObjectInspector.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -135,6 +138,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DevTools\EquipmentProbe.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="DevTools\ObjectInspector.cpp">
