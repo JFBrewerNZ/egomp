@@ -104,6 +104,11 @@ namespace ObjectInspector
         return IsReadable(p, bytes);
     }
 
+    void AppendToLogFile(const std::string& report)
+    {
+        WriteLogFile(report);
+    }
+
     const char* GetRttiName(const void* object)
     {
         if (!IsReadable(object, sizeof(void*)))

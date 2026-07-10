@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <string>
 
 // Runtime structure discovery for reverse engineering. Fable.exe ships with
 // full MSVC RTTI, so any polymorphic game object can be identified by class
@@ -19,6 +20,10 @@ namespace ObjectInspector
 
     // VirtualQuery-based readability check, exported for other probes.
     bool IsReadableMemory(const void* p, size_t bytes);
+
+    // Append a (possibly multi-line) report to EgoMP-inspect.log as one
+    // timestamped block. Does not print to the console.
+    void AppendToLogFile(const std::string& report);
 
     void Dump(const char* label, const void* object, size_t bytes);
 

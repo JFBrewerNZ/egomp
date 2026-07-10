@@ -141,38 +141,71 @@ namespace
 
 namespace EquipmentProbe
 {
+    void Emit(std::string& report, const std::string& line)
+    {
+        std::cout << line << std::endl;
+        report += line + "\n";
+    }
+
     void DumpEquipment(CThingPlayerCreature* creature)
     {
-        std::cout << "[Equip] --- equipment of hero @ " << creature
-            << " (" << DefNameOf((CThing*)creature) << ") ---" << std::endl;
+        std::string report;
+        char buf[256];
 
-        if (void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING))
+        sprintf_s(buf, "[Equip] --- equipment of hero @ %p (%s) ---",
+            (void*)creature, DefNameOf((CThing*)creature).c_str());
+        Emit(report, buf);
+
+        void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING);
+        size_t wornCount = 0;
+
+        if (clothing)
         {
             CThing* pieces[WORN_MAX_SLOTS] = {};
-            size_t count = FindWornPieces(clothing, pieces, WORN_MAX_SLOTS);
-            std::cout << "[Equip] clothing TC @ " << clothing
-                << ", worn pieces found: " << count << std::endl;
+            wornCount = FindWornPieces(clothing, pieces, WORN_MAX_SLOTS);
+            const void* pool = *(const void* const*)((const char*)clothing + WORN_ARRAY_OFFSET);
 
-            for (size_t i = 0; i < count; i++)
-                std::cout << "[Equip] worn[" << i << "] = " << DefNameOf(pieces[i]) << std::endl;
+            sprintf_s(buf, "[Equip] clothing TC @ %p, +0x14C pool @ %p, worn pieces found: %u",
+                clothing, pool, (unsigned)wornCount);
+            Emit(report, buf);
+
+            for (size_t i = 0; i < wornCount; i++)
+            {
+                sprintf_s(buf, "[Equip] worn[%u] = %s", (unsigned)i, DefNameOf(pieces[i]).c_str());
+                Emit(report, buf);
+            }
         }
         else
-            std::cout << "[Equip] no CTCInventoryClothing found" << std::endl;
+            Emit(report, "[Equip] no CTCInventoryClothing found");
 
-        if (void* weapons = FindTC(creature, TC_ID_INVENTORY_WEAPONS))
+        void* weapons = FindTC(creature, TC_ID_INVENTORY_WEAPONS);
+        CThing* melee = nullptr;
+        CThing* ranged = nullptr;
+
+        if (weapons)
         {
             const char* base = (const char*)weapons;
-            CThing* melee = ThingFromIntelligentPointer(base + MELEE_CARRIED_OFFSET);
-            CThing* ranged = ThingFromIntelligentPointer(base + RANGED_CARRIED_OFFSET);
+            melee = ThingFromIntelligentPointer(base + MELEE_CARRIED_OFFSET);
+            ranged = ThingFromIntelligentPointer(base + RANGED_CARRIED_OFFSET);
 
-            std::cout << "[Equip] weapons TC @ " << weapons
-                << ", melee = " << (melee ? DefNameOf(melee) : "<none>")
-                << ", ranged = " << (ranged ? DefNameOf(ranged) : "<none>") << std::endl;
+            sprintf_s(buf, "[Equip] weapons TC @ %p, melee = %s, ranged = %s",
+                weapons,
+                melee ? DefNameOf(melee).c_str() : "<none>",
+                ranged ? DefNameOf(ranged).c_str() : "<none>");
+            Emit(report, buf);
         }
         else
-            std::cout << "[Equip] no CTCInventoryWeapons found" << std::endl;
+            Emit(report, "[Equip] no CTCInventoryWeapons found");
 
-        std::cout << "[Equip] --- end ---" << std::endl;
+        Emit(report, "[Equip] --- end ---");
+        ObjectInspector::AppendToLogFile(report);
+
+        // A dressed hero with no findings means our layout assumptions are
+        // off again — capture the actual component contents for diagnosis.
+        if (clothing && wornCount == 0)
+            ObjectInspector::Dump("clothing TC (auto-dump: 0 worn found)", clothing, 0x200);
+        if (weapons && !melee && !ranged)
+            ObjectInspector::Dump("weapons TC (auto-dump: no weapons found)", weapons, 0x200);
     }
 
     void ProbeNextCandidate(CThingPlayerCreature* creature)
