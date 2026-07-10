@@ -20,12 +20,15 @@ namespace
     const int TC_ID_INVENTORY_WEAPONS = 0x13;
     const int TC_ID_HERO_ATTACHABLE_APPEARANCE = 0x5E;
 
-    // CTCHeroAttachableAppearanceModifiers+0x14 -> attachment list: entries
-    // at 12-dword (0x30 B) stride, first field = attached CThingObject*
-    // (the worn piece as physically shown on the hero).
-    const size_t ATTACH_LIST_OFFSET = 0x14;
-    const size_t ATTACH_STRIDE_DWORDS = 12;
-    const size_t ATTACH_MAX_ENTRIES = 24;
+    // CTCHeroAttachableAppearanceModifiers members, derived from its
+    // serializer @0x706F40 and the appearance-reset vfunc @0x7079E0:
+    //   +0x30/+0x34 = vector begin/end of 8-byte entries, first dword =
+    //                 appearance-modifier defGlobalIndex
+    //   0x706880    = AddModifier(int defGlobalIndex)   (__thiscall)
+    //   vfunc slot 4 @0x7079E0 = re-apply def modifiers + add
+    //                 OBJECT_HERO_HORNS + rebuild + refresh (no args)
+    const size_t MODIFIER_VECTOR_OFFSET = 0x30;
+    const uintptr_t FN_APPEARANCE_RESET_WITH_HORNS = 0x7079E0;
 
     // CTCInventoryWeapons carried-weapon members (serializer @0x5C3A95):
     // CIntelligentPointer<CThing>, 0x10 bytes each.
@@ -164,27 +167,26 @@ namespace
         report += line + "\n";
     }
 
-    size_t FindAttachedPieces(void* creature, CThing** out, size_t max)
+    // Active appearance-modifier def indexes, read exactly the way the
+    // game's own serializer does.
+    size_t ReadModifierDefIndexes(void* appearanceTC, unsigned* out, size_t max)
     {
-        void* tc = FindTC(creature, TC_ID_HERO_ATTACHABLE_APPEARANCE);
-        if (!tc)
+        const char* base = (const char*)appearanceTC + MODIFIER_VECTOR_OFFSET;
+        const char* begin = ((const char* const*)base)[0];
+        const char* end = ((const char* const*)base)[1];
+
+        if (!begin || end < begin || (size_t)(end - begin) > 0x800
+            || !ObjectInspector::IsReadableMemory(begin, end - begin))
             return 0;
 
-        const char* list = *(const char* const*)((const char*)tc + ATTACH_LIST_OFFSET);
-        size_t found = 0;
+        size_t count = (end - begin) / 8;
+        if (count > max)
+            count = max;
 
-        for (size_t i = 0; found < max && i < ATTACH_MAX_ENTRIES; i++)
-        {
-            const char* slot = list + i * ATTACH_STRIDE_DWORDS * sizeof(void*);
-            if (!ObjectInspector::IsReadableMemory(slot, sizeof(void*)))
-                break;
+        for (size_t i = 0; i < count; i++)
+            out[i] = *(const unsigned*)(begin + i * 8);
 
-            CThing* thing = AsThing(*(void* const*)slot);
-            if (thing && RttiContains(thing, "ThingObject"))
-                out[found++] = thing;
-        }
-
-        return found;
+        return count;
     }
 
     // Item-vector entry: 5 dwords {defIndex, count, ptrA, ptrB, flags}.
@@ -263,62 +265,26 @@ namespace
         }
     }
 
-    // Live CThing of an instantiated (suspected worn) clothing item — found
-    // via the instance pointers of a category entry. Safe to hand to probe
-    // candidates: it is a real clothing item Thing owned by the hero.
-    CThing* FirstClothingItem(void* clothingTC, std::string* defNameOut)
-    {
-        CategoryRecord records[CATEGORY_MAX] = {};
-        size_t count = FindCategoryRecords(clothingTC, records, CATEGORY_MAX);
-
-        for (size_t c = 0; c < count; c++)
-        {
-            size_t entries = (records[c].itemsEnd - records[c].itemsBegin) / 5;
-            for (size_t i = 0; i < entries; i++)
-            {
-                const ItemEntry* e = (const ItemEntry*)(records[c].itemsBegin + i * 5);
-                if (!ObjectInspector::IsReadableMemory(e, sizeof(ItemEntry)))
-                    break;
-
-                for (void* p : { e->ptrA, e->ptrB })
-                {
-                    if (!p || !ObjectInspector::IsReadableMemory(p, 4 * sizeof(void*)))
-                        continue;
-                    for (size_t k = 0; k < 4; k++)
-                    {
-                        CThing* thing = AsThing(((void* const*)p)[k]);
-                        if (thing && RttiContains(thing, "ThingObject"))
-                        {
-                            *defNameOut = DefNameOf(thing);
-                            return thing;
-                        }
-                    }
-                }
-            }
-        }
-
-        return nullptr;
-    }
-
-    // Unidentified 1-argument CTCInventoryClothing virtuals (vtable
-    // 0x124356C), ranked by static analysis; see RE-NOTES.md. Slot 0 is
-    // excluded: MSVC puts the scalar deleting destructor there.
-    const struct { int slot; uintptr_t va; } CANDIDATES[] = {
-        { 12, 0x5BFB96 },
-        { 26, 0x5B3E4E },
-        { 36, 0x5B5BE6 },
-        { 11, 0x5B9641 },
-        { 77, 0x5B76D1 },
-    };
-    const size_t CANDIDATE_COUNT = sizeof(CANDIDATES) / sizeof(CANDIDATES[0]);
-
-    // Plain function: __try cannot share a frame with unwindable objects.
+    // Plain functions: __try cannot share a frame with unwindable objects.
     int GuardedThiscall1(uintptr_t fn, void* self, void* arg, unsigned long* exceptionCode)
     {
         *exceptionCode = 0;
         __try
         {
             return ((int(__thiscall*)(void*, void*))fn)(self, arg);
+        }
+        __except (*exceptionCode = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
+        {
+            return 0;
+        }
+    }
+
+    int GuardedThiscall0(uintptr_t fn, void* self, unsigned long* exceptionCode)
+    {
+        *exceptionCode = 0;
+        __try
+        {
+            return ((int(__thiscall*)(void*))fn)(self);
         }
         __except (*exceptionCode = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
         {
@@ -338,18 +304,29 @@ namespace EquipmentProbe
             (void*)creature, DefNameOf((CThing*)creature).c_str());
         Emit(report, buf);
 
-        // Worn pieces, read from the appearance-attachment list — this is
-        // what is physically visible on the hero.
-        CThing* attached[ATTACH_MAX_ENTRIES] = {};
-        size_t attachedCount = FindAttachedPieces(creature, attached, ATTACH_MAX_ENTRIES);
-        sprintf_s(buf, "[Equip] appearance attachments: %u", (unsigned)attachedCount);
-        Emit(report, buf);
-        for (size_t i = 0; i < attachedCount; i++)
+        // Active appearance modifiers (hair/hat/clothing visuals), read via
+        // the member offsets the game's serializer uses.
+        if (void* appearance = FindTC(creature, TC_ID_HERO_ATTACHABLE_APPEARANCE))
         {
-            sprintf_s(buf, "[Equip]  attached[%u] = %s", (unsigned)i,
-                DefNameOf(attached[i]).c_str());
+            unsigned indexes[32] = {};
+            size_t n = ReadModifierDefIndexes(appearance, indexes, 32);
+
+            sprintf_s(buf, "[Equip] appearance TC @ %p, active modifiers: %u",
+                appearance, (unsigned)n);
             Emit(report, buf);
+
+            std::string line = "[Equip]  modifier def indexes:";
+            for (size_t i = 0; i < n; i++)
+            {
+                char hex[16];
+                sprintf_s(hex, " 0x%X", indexes[i]);
+                line += hex;
+            }
+            if (n)
+                Emit(report, line);
         }
+        else
+            Emit(report, "[Equip] no CTCHeroAttachableAppearanceModifiers found");
 
         if (void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING))
             DumpCategories(report, "clothing", clothing);
@@ -411,58 +388,37 @@ namespace EquipmentProbe
 
     void ProbeNextCandidate(CThingPlayerCreature* creature)
     {
-        static size_t next = 0;
         std::string report;
         char buf[256];
 
-        void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING);
-        std::string defName;
-        CThing* item = nullptr;
-
-        // Prefer a genuinely-worn piece from the appearance-attachment list;
-        // fall back to an instantiated inventory entry.
-        CThing* attached[1] = {};
-        if (FindAttachedPieces(creature, attached, 1))
+        // The horns experiment: the appearance-reset vfunc re-applies the
+        // creature def's modifiers, adds OBJECT_HERO_HORNS via
+        // AddModifier(defIndex), and rebuilds the visible appearance. If the
+        // hero visibly sprouts horns, the whole apply pipeline for
+        // appearance sync is confirmed in one call.
+        void* appearance = FindTC(creature, TC_ID_HERO_ATTACHABLE_APPEARANCE);
+        if (!appearance)
         {
-            item = attached[0];
-            defName = DefNameOf(item);
-        }
-        else if (clothing)
-            item = FirstClothingItem(clothing, &defName);
-
-        if (!item || !clothing)
-        {
-            Emit(report, "[Equip] probe: no worn clothing item found"
-                " (check NUMPAD8 output first)");
+            Emit(report, "[Equip] probe: no appearance TC found");
             ObjectInspector::AppendToLogFile(report);
             return;
         }
 
-        if (next >= CANDIDATE_COUNT)
-        {
-            Emit(report, "[Equip] probe: all candidates tried; restarting cycle");
-            next = 0;
-        }
-
-        const auto& candidate = CANDIDATES[next++];
-
-        // Logged (and flushed) before the call so a hard crash still tells
-        // us which candidate died.
-        sprintf_s(buf, "[Equip] probe %u/%u: vtbl slot %d @ 0x%X (this=clothingTC, arg=%s)",
-            (unsigned)next, (unsigned)CANDIDATE_COUNT, candidate.slot,
-            (unsigned)candidate.va, defName.c_str());
+        sprintf_s(buf, "[Equip] probe: calling appearance reset+horns @ 0x%X on TC %p"
+            " - watch the hero's head!",
+            (unsigned)FN_APPEARANCE_RESET_WITH_HORNS, appearance);
         Emit(report, buf);
         ObjectInspector::AppendToLogFile(report);
         report.clear();
 
         unsigned long exceptionCode = 0;
-        int result = GuardedThiscall1(candidate.va, clothing, item, &exceptionCode);
+        GuardedThiscall0(FN_APPEARANCE_RESET_WITH_HORNS, appearance, &exceptionCode);
 
         if (exceptionCode)
             sprintf_s(buf, "[Equip] probe: EXCEPTION 0x%X (caught; game state may be unstable)",
                 (unsigned)exceptionCode);
         else
-            sprintf_s(buf, "[Equip] probe: returned %d - did anything change on the hero?", result);
+            sprintf_s(buf, "[Equip] probe: call returned - did horns appear?");
         Emit(report, buf);
         ObjectInspector::AppendToLogFile(report);
     }
