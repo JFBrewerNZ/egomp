@@ -480,6 +480,20 @@ namespace EquipmentProbe
         // inputs; without it the per-frame update never consumes them.
         *((unsigned char*)morph + 0x3D) = 1;
 
+        // CTCHeroMorph vtable slot 28 @0x71E130: if the dirty flag is set,
+        // posts CMessageOnMorphChanged to the owner creature, recomputes the
+        // morph (0x71DE80), refreshes the graphic appearance and clears the
+        // flag — the full update pump the direct writes were missing.
+        unsigned long exceptionCode = 0;
+        GuardedThiscall0(0x71E130, morph, &exceptionCode);
+
+        if (exceptionCode)
+            sprintf_s(buf, "[Equip] probe: morph pump EXCEPTION 0x%X", (unsigned)exceptionCode);
+        else
+            sprintf_s(buf, "[Equip] probe: morph pump returned, dirty flag now %d"
+                " - did the body change?", (int)*((unsigned char*)morph + 0x3D));
+        Emit(report, buf);
+
         ObjectInspector::AppendToLogFile(report);
     }
 }
