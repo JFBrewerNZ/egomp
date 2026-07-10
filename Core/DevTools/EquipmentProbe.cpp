@@ -346,6 +346,17 @@ namespace EquipmentProbe
                 " age=%.3f morality=%.3f fatness=%.3f tan=%.3f",
                 morph, f[0], f[1], f[2], f[3], f[4], f[5], f[6]);
             Emit(report, buf);
+
+            // Neighbouring fields, in case a stat-driven morph (muscle)
+            // lives outside the seven serialized floats.
+            const float* raw = (const float*)((const char*)morph + 0x1C);
+            sprintf_s(buf, "[Equip]  morph raw +0x1C..+0x44: %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f",
+                raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7], raw[8], raw[9], raw[10]);
+            Emit(report, buf);
+            const float* raw2 = (const float*)((const char*)morph + 0x64);
+            sprintf_s(buf, "[Equip]  morph raw +0x64..+0x8C: %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f",
+                raw2[0], raw2[1], raw2[2], raw2[3], raw2[4], raw2[5], raw2[6], raw2[7], raw2[8], raw2[9], raw2[10]);
+            Emit(report, buf);
         }
         else
             Emit(report, "[Equip] no CTCHeroMorph found");

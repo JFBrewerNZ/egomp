@@ -36,6 +36,19 @@ void NetPlayerManager::UpdateAppearanceSync()
         return;
     nextAppearanceCheckMs = now + APPEARANCE_CHECK_INTERVAL_MS;
 
+    // The game recomputes stat-driven morphs (muscle) from the creature's
+    // own stats, clobbering one-time writes — remote creatures have default
+    // stats, so keep re-asserting the synced values.
+    for (auto& netPlayer : netPlayers)
+    {
+        if (!netPlayer || !netPlayer->IsSpawned() || !netPlayer->HasMorphValues())
+            continue;
+
+        CThingPlayerCreature* remote = GetCreatureFromNetworkId(netPlayer->GetNetworkId());
+        if (CTCHeroMorph* remoteMorph = CTCHeroMorph::FromCreature(remote))
+            remoteMorph->SetValues(netPlayer->GetMorphValues());
+    }
+
     CThingPlayerCreature* creature = GetCreatureFromLocalId(localNetPlayer->GetLocalId());
     CTCHeroAttachableAppearanceModifiers* appearance =
         CTCHeroAttachableAppearanceModifiers::FromCreature(creature);
