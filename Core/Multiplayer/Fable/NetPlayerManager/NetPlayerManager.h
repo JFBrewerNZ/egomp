@@ -16,7 +16,7 @@ public:
 
     void ConnectionNotification(int networkId, SystemAddress systemAddress);
 
-    void CreateLocalNetPlayer(int networkId, C3DVector position);
+    void CreateLocalNetPlayer(int networkId, C3DVector position, bool hostIsPlayer);
     void CreateNetPlayer(int networkId, C3DVector position, int defGlobalIndex);
     void CreateNetPlayers(int networkId, C3DVector position, int defGlobalIndex);
 
@@ -37,6 +37,7 @@ private:
     std::vector<std::unique_ptr<NetPlayer>> netPlayers;
 
     void TeleportLocalNetPlayerToHost(int networkId, C3DVector position);
+    void AnnounceLocalNetPlayer(int networkId);
 
     void ApplyNetPlayerMovement(int networkId);
     void ApplyNetPlayerRotation(int networkId);
@@ -52,6 +53,8 @@ private:
 
     CThingPlayerCreature* GetCreatureFromNetworkId(int networkId) const;
     CThingPlayerCreature* GetCreatureFromLocalId(int localId) const;
+
+    int GetDefGlobalIndex(CThingPlayerCreature* creature) const;
 
     int GetFreeLocalId();
     int GetLocalIdFromNetworkId(int networkId) const;

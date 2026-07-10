@@ -21,6 +21,7 @@ void NetPlayerManager::ConnectionNotification(int networkId, SystemAddress syste
     SLNet::BitStream bs;
     bs.Write((SLNet::MessageID)ID_CREATE_LOCAL_NET_PLAYER);
     bs.Write(networkId);
+    bs.Write((unsigned char)1); // hostIsPlayer: P2P host, joiner teleports to us
     bs.Write(position);
 
     network->SendTo((const char*)bs.GetData(), bs.GetNumberOfBytesUsed(), HIGH_PRIORITY, RELIABLE_ORDERED, systemAddress);

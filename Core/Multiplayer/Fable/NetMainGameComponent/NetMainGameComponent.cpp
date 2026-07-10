@@ -186,12 +186,14 @@ void NetMainGameComponent::SetupNetworkCallbacks()
     });
     network->AddCreateLocalNetPlayerCallback("CreateLocalNetPlayer", [this](BitStream& bs) {
         int networkId = -1;
+        unsigned char hostIsPlayer = 1;
         C3DVector position = {};
 
         bs.Read(networkId);
+        bs.Read(hostIsPlayer);
         bs.Read(position);
 
-        netPlayerManager->CreateLocalNetPlayer(networkId, position);
+        netPlayerManager->CreateLocalNetPlayer(networkId, position, hostIsPlayer != 0);
     });
     network->AddCreateNetPlayerCallback("CreateNetPlayer", [this](BitStream& bs) {
         int networkId = -1;

@@ -51,8 +51,13 @@ bool Network::Host(unsigned short port)
 	self.address = peer->GetMyBoundAddress();
 	connections.push_back(self);
 
+	// Self-create for the hosting player: id 0 takes neither the teleport nor
+	// the announce path, so the flag and position are only there to keep the
+	// payload shape consistent.
 	SLNet::BitStream bs;
 	bs.Write(self.networkId);
+	bs.Write((unsigned char)1);
+	bs.Write(0.0f); bs.Write(0.0f); bs.Write(0.0f);
 
 	for (const auto& pair : createLocalNetPlayerCallbacks)
 	{

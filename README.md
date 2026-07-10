@@ -35,6 +35,19 @@ Experimental multiplayer mod for [Fable: The Lost Chapters](https://en.wikipedia
    - Then enter the port (or leave empty for default).
 9. Return to the game and *voilà*, everything should work!
 
+## 🖥 Dedicated Server (experimental)
+
+`EgoMPServer.exe` is a standalone session server — it needs no copy of the game and can run on any Windows machine or VPS. It assigns player ids, remembers who is where, and relays player updates; each connected client keeps simulating its own world.
+
+```
+EgoMPServer.exe [port] [maxPlayers]   # defaults: 60000, 8
+```
+
+Clients join a dedicated server exactly like joining a hosted game (**NUMPAD 2**, then enter the server's IP and port in the console). Unlike joining a player host, you are **not** teleported: you appear in your own world at your own position, and see other players who are in the same region.
+
+> [!NOTE]
+> Players in *different* regions currently still see each other's creatures at raw coordinates; region-scoped visibility is in progress. For now, meet up in the same region.
+
 ## 📜 Legal & Licensing
 
 This project is licensed under the [GPLv3](https://www.gnu.org/licenses/gpl-3.0.html) license.
