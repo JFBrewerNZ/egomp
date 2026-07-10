@@ -470,11 +470,15 @@ namespace EquipmentProbe
 
         float* f = (float*)((char*)morph + MORPH_FLOATS_OFFSET);
         sprintf_s(buf, "[Equip] probe: local morph strength %.3f -> 1.0, fatness %.3f -> 0.9"
-            " - watch the hero's body for ~20s!", f[0], f[5]);
+            " + dirty flag (+0x3D) - watch the hero's body!", f[0], f[5]);
         Emit(report, buf);
 
         f[0] = 1.0f; // strength
         f[5] = 0.9f; // fatness
+
+        // The morph CopyFrom vfunc (0x71CD90) sets this after changing the
+        // inputs; without it the per-frame update never consumes them.
+        *((unsigned char*)morph + 0x3D) = 1;
 
         ObjectInspector::AppendToLogFile(report);
     }
