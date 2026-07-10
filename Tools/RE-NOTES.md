@@ -67,6 +67,37 @@ CTCInventoryClothing's own serializer (@0x5B369A) only writes "InGameSave"
 and delegates — the clothing list is serialized by the base
 CTCInventory::Serialize (@0x591A66), not yet mapped.
 
+## Creature-action API (2026-07-11) — the "make a creature do X" mechanism
+
+Universal pattern (seen at every action call site):
+```
+sub esp, ~0xB0..0xBC        ; action constructed in a STACK buffer
+push <args>                 ; action-specific
+lea ecx, [esp+X]
+call <action ctor>          ; returns eax = action*
+push eax
+mov ecx, <creature>         ; CThingCreatureBase*
+call 0x6644F0               ; DoCreatureAction(action*)  <- THE entry point
+lea ecx, [esp+X]
+call 0x693EF0               ; action dtor (some sites use a specific dtor)
+```
+
+| Action | vtable | ctor | notes |
+|---|---|---|---|
+| CCreatureAction_GiveItemToThing | `0x125919C` | `0x62D9E0` | 3 args (two CIntelligentPointers at +0xA8/+0xB0: item, recipient); transfers an EXISTING item Thing |
+| CCreatureAction_AddRealObjectToInventory | `0x1270D5C` | `0x7EB2D0` | args (thing, creature-ish); pickup of an existing world object |
+| CCreatureAction_UnsheatheItemFromInventory | `0x125CCBC` | `0x69F0F0` | callers 0x69F213/0x7A7C5F/0x8B970E/0x8B97AE — draw weapon |
+| CCreatureAction_SheatheItemToInventory | `0x125C83C` | `0x69EF80` | callers 0x69F079/0A9/0D9, 0x72CC96 |
+
+Wield-state members (weapons serializer @0x5C3A95 load path):
+`ActiveMeleeWeaponDefIndex2` @ weapons TC **+0x13C**,
+`ActiveRangedWeaponDefIndex2` @ **+0x14C**. Carried IPs at +0x140/+0x150
+deserialize generically (0x4107C0) and re-link by UID — the weapon Things
+belong to the world/save, NOT created by this component. So giving a
+remote creature a weapon still needs an **object-from-def factory**
+(CThingObject creation; next RE target — trace CThingObject ctor callers
+or chest/spawner code).
+
 ## Next steps
 
 1. ~~Locate the hero's TC components~~ → **probe built** (2026-07-10):
