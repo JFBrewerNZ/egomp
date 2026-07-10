@@ -39,6 +39,7 @@ struct PlayerState
     Vec3 forward;
     std::vector<int> appearance; // appearance-modifier def indexes
     float morph[7] = {};         // strength..tan body-shape values
+    int statsExp[12] = {};       // experience spent per stat (drives physique)
     bool hasAppearance = false;
     bool announced = false; // true once the client has sent ID_CREATE_NET_PLAYER
 };
@@ -237,6 +238,8 @@ private:
                 looks.Write(pair.first);
                 for (float value : pair.second.morph)
                     looks.Write(value);
+                for (int value : pair.second.statsExp)
+                    looks.Write(value);
                 looks.Write((int)pair.second.appearance.size());
                 for (int defIndex : pair.second.appearance)
                     looks.Write(defIndex);
@@ -330,10 +333,13 @@ private:
 
         int networkId = -1;
         float morph[7] = {};
+        int statsExp[12] = {};
         int count = 0;
 
         in.Read(networkId);
         for (float& value : morph)
+            in.Read(value);
+        for (int& value : statsExp)
             in.Read(value);
         in.Read(count);
 
@@ -356,6 +362,8 @@ private:
         state.appearance = std::move(appearance);
         for (int i = 0; i < 7; i++)
             state.morph[i] = morph[i];
+        for (int i = 0; i < 12; i++)
+            state.statsExp[i] = statsExp[i];
         state.hasAppearance = true;
 
         SendToAnnouncedExcept(senderId, packet, HIGH_PRIORITY, RELIABLE_ORDERED);

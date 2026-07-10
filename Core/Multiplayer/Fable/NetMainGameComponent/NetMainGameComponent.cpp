@@ -347,6 +347,11 @@ void NetMainGameComponent::SetupNetworkCallbacks()
         bs.Read(morph.morality);
         bs.Read(morph.fatness);
         bs.Read(morph.tan);
+
+        HeroStatsExperience exp;
+        for (int& value : exp.spentOn)
+            bs.Read(value);
+
         bs.Read(count);
 
         if (count < 0 || count > 256)
@@ -362,7 +367,7 @@ void NetMainGameComponent::SetupNetworkCallbacks()
             modifierDefIndexes.push_back(defIndex);
         }
 
-        netPlayerManager->ReceiveNetPlayerAppearance(networkId, morph, std::move(modifierDefIndexes));
+        netPlayerManager->ReceiveNetPlayerAppearance(networkId, morph, exp, std::move(modifierDefIndexes));
     });
     network->AddDestroyLocalNetPlayerCallback("DestroyLocalNetPlayer", [this]() {
         netPlayerManager->DestroyLocalNetPlayer();

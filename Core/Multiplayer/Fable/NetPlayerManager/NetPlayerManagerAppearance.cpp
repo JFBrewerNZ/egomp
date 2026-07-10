@@ -10,7 +10,8 @@
 static const unsigned long long APPEARANCE_CHECK_INTERVAL_MS = 1000;
 
 static void WriteAppearance(SLNet::BitStream& bs, int networkId,
-    const HeroMorphValues& morph, const std::vector<int>& modifierDefIndexes)
+    const HeroMorphValues& morph, const HeroStatsExperience& exp,
+    const std::vector<int>& modifierDefIndexes)
 {
     bs.Write((SLNet::MessageID)ID_PLAYER_APPEARANCE);
     bs.Write(networkId);
@@ -21,6 +22,8 @@ static void WriteAppearance(SLNet::BitStream& bs, int networkId,
     bs.Write(morph.morality);
     bs.Write(morph.fatness);
     bs.Write(morph.tan);
+    for (int value : exp.spentOn)
+        bs.Write(value);
     bs.Write((int)modifierDefIndexes.size());
     for (int defIndex : modifierDefIndexes)
         bs.Write(defIndex);
@@ -47,37 +50,43 @@ void NetPlayerManager::UpdateAppearanceSync()
         CThingPlayerCreature* remote = GetCreatureFromNetworkId(netPlayer->GetNetworkId());
         if (CTCHeroMorph* remoteMorph = CTCHeroMorph::FromCreature(remote))
             remoteMorph->SetValues(netPlayer->GetMorphValues());
+        if (CTCHeroStats* remoteStats = CTCHeroStats::FromCreature(remote))
+            remoteStats->SetExperienceSpentOn(netPlayer->GetStatsExperience());
     }
 
     CThingPlayerCreature* creature = GetCreatureFromLocalId(localNetPlayer->GetLocalId());
     CTCHeroAttachableAppearanceModifiers* appearance =
         CTCHeroAttachableAppearanceModifiers::FromCreature(creature);
     CTCHeroMorph* morph = CTCHeroMorph::FromCreature(creature);
+    CTCHeroStats* stats = CTCHeroStats::FromCreature(creature);
 
-    if (!appearance || !morph)
+    if (!appearance || !morph || !stats)
         return;
 
     std::vector<int> currentModifiers = appearance->GetModifierDefIndexes();
     HeroMorphValues currentMorph = morph->GetValues();
+    HeroStatsExperience currentExp;
 
-    if (currentModifiers.empty())
+    if (currentModifiers.empty() || !stats->GetExperienceSpentOn(currentExp))
         return;
 
-    if (currentModifiers == lastSentAppearance && currentMorph == lastSentMorph)
+    if (currentModifiers == lastSentAppearance && currentMorph == lastSentMorph
+        && currentExp == lastSentExperience)
         return;
 
-    BroadcastLocalNetPlayerAppearance(currentMorph, currentModifiers);
+    BroadcastLocalNetPlayerAppearance(currentMorph, currentExp, currentModifiers);
     lastSentAppearance = std::move(currentModifiers);
     lastSentMorph = currentMorph;
+    lastSentExperience = currentExp;
 }
 
 void NetPlayerManager::BroadcastLocalNetPlayerAppearance(const HeroMorphValues& morph,
-    const std::vector<int>& modifierDefIndexes)
+    const HeroStatsExperience& exp, const std::vector<int>& modifierDefIndexes)
 {
     int networkId = localNetPlayer->GetNetworkId();
 
     SLNet::BitStream bs;
-    WriteAppearance(bs, networkId, morph, modifierDefIndexes);
+    WriteAppearance(bs, networkId, morph, exp, modifierDefIndexes);
 
     if (networkId == 0)
         network->SendToAllClients((const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
@@ -90,12 +99,12 @@ void NetPlayerManager::BroadcastLocalNetPlayerAppearance(const HeroMorphValues& 
 }
 
 void NetPlayerManager::ReceiveNetPlayerAppearance(int networkId,
-    HeroMorphValues morph, std::vector<int> modifierDefIndexes)
+    HeroMorphValues morph, HeroStatsExperience exp, std::vector<int> modifierDefIndexes)
 {
     if (localNetPlayer && localNetPlayer->GetNetworkId() == 0)
     {
         SLNet::BitStream bs;
-        WriteAppearance(bs, networkId, morph, modifierDefIndexes);
+        WriteAppearance(bs, networkId, morph, exp, modifierDefIndexes);
 
         network->SendToAllClientsExcept(networkId, (const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
     }
@@ -107,6 +116,7 @@ void NetPlayerManager::ReceiveNetPlayerAppearance(int networkId,
 
     netPlayer->SetAppearance(std::move(modifierDefIndexes));
     netPlayer->SetMorphValues(morph);
+    netPlayer->SetStatsExperience(exp);
 
     if (netPlayer->IsSpawned())
         ApplyNetPlayerAppearance(*netPlayer);
@@ -120,6 +130,8 @@ void NetPlayerManager::ApplyNetPlayerAppearance(NetPlayer& netPlayer)
     {
         if (CTCHeroMorph* morph = CTCHeroMorph::FromCreature(creature))
             morph->SetValues(netPlayer.GetMorphValues());
+        if (CTCHeroStats* stats = CTCHeroStats::FromCreature(creature))
+            stats->SetExperienceSpentOn(netPlayer.GetStatsExperience());
     }
 
     const std::vector<int>& wanted = netPlayer.GetAppearance();
@@ -161,7 +173,8 @@ void NetPlayerManager::SendNetPlayerAppearancesTo(int networkId)
     if (!lastSentAppearance.empty())
     {
         SLNet::BitStream bs;
-        WriteAppearance(bs, localNetPlayer->GetNetworkId(), lastSentMorph, lastSentAppearance);
+        WriteAppearance(bs, localNetPlayer->GetNetworkId(), lastSentMorph,
+            lastSentExperience, lastSentAppearance);
 
         network->SendToClient(networkId, (const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
     }
@@ -173,8 +186,8 @@ void NetPlayerManager::SendNetPlayerAppearancesTo(int networkId)
             continue;
 
         SLNet::BitStream bs;
-        WriteAppearance(bs, netPlayer->GetNetworkId(),
-            netPlayer->GetMorphValues(), netPlayer->GetAppearance());
+        WriteAppearance(bs, netPlayer->GetNetworkId(), netPlayer->GetMorphValues(),
+            netPlayer->GetStatsExperience(), netPlayer->GetAppearance());
 
         network->SendToClient(networkId, (const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
     }

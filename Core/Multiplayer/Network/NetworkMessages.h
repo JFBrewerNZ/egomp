@@ -4,7 +4,7 @@
 
 // Bumped whenever a payload changes shape; mismatching peers are rejected
 // at ID_CONNECTION_NOTIFICATION.
-const int EGOMP_PROTOCOL_VERSION = 4;
+const int EGOMP_PROTOCOL_VERSION = 5;
 
 // Every payload is prefixed with its [uint8 messageId].
 // "host" below means the session authority: either a hosting player (P2P)
@@ -46,11 +46,13 @@ enum NetworkMessages
     ID_PLAYER_REGION,
 
     // sender -> host -> other clients:
-    // [int networkId][7 x float morph][int count][count x int modifierDefGlobalIndex]
+    // [int networkId][7 x float morph][12 x int expSpentOn]
+    // [int count][count x int modifierDefGlobalIndex]
     // The sender's body-shape morph values (strength/will/skill/age/
-    // morality/fatness/tan, normalized 0..1) and full appearance-modifier
-    // set (hair/beard/hat/horns...). Sent shortly after connecting and
-    // whenever either changes; the host stores the latest per player and
-    // seeds it to joining clients.
+    // morality/fatness/tan, normalized 0..1), per-stat spent experience
+    // (drives physique), and full appearance-modifier set (hair/beard/
+    // hat/horns...). Sent shortly after connecting and whenever any of it
+    // changes; the host stores the latest per player and seeds it to
+    // joining clients.
     ID_PLAYER_APPEARANCE
 };

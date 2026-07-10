@@ -5,8 +5,10 @@ namespace
     const size_t TC_LIST_OFFSET = 0x44;
     const int TC_ID_HERO_ATTACHABLE_APPEARANCE = 0x5E;
     const int TC_ID_HERO_MORPH = 0x03;
+    const int TC_ID_HERO_STATS = 0x04;
 
     const size_t MORPH_FLOATS_OFFSET = 0x48; // Strength..Tan, 7 floats
+    const size_t STATS_EXP_SPENT_ON_OFFSET = 0x18; // ptr to 12 ints
 
     const uintptr_t FN_ADD_MODIFIER = 0x706880;
     const uintptr_t FN_RESET_AND_REBUILD = 0x7079E0;
@@ -130,4 +132,33 @@ void CTCHeroMorph::SetValues(const HeroMorphValues& values)
     f[4] = values.morality;
     f[5] = values.fatness;
     f[6] = values.tan;
+}
+
+CTCHeroStats* CTCHeroStats::FromCreature(CThingPlayerCreature* creature)
+{
+    return (CTCHeroStats*)FindThingComponent(creature, TC_ID_HERO_STATS);
+}
+
+bool CTCHeroStats::GetExperienceSpentOn(HeroStatsExperience& out)
+{
+    const int* buffer = *(const int* const*)((const char*)this + STATS_EXP_SPENT_ON_OFFSET);
+
+    if (!buffer)
+        return false;
+
+    for (size_t i = 0; i < HERO_STAT_EXPERIENCE_COUNT; i++)
+        out.spentOn[i] = buffer[i];
+
+    return true;
+}
+
+void CTCHeroStats::SetExperienceSpentOn(const HeroStatsExperience& values)
+{
+    int* buffer = *(int* const*)((char*)this + STATS_EXP_SPENT_ON_OFFSET);
+
+    if (!buffer)
+        return;
+
+    for (size_t i = 0; i < HERO_STAT_EXPERIENCE_COUNT; i++)
+        buffer[i] = values.spentOn[i];
 }

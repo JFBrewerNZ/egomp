@@ -63,3 +63,32 @@ public:
     HeroMorphValues GetValues();
     void SetValues(const HeroMorphValues& values);
 };
+
+// CTCHeroStats "ExperienceSpentOn" ledger (member map from the serializer
+// @0x57E2F1): +0x18 points at 12 ints of experience spent per stat — the
+// values body physique derives from (their sum equals TotalSpentExperience).
+const size_t HERO_STAT_EXPERIENCE_COUNT = 12;
+
+struct HeroStatsExperience
+{
+    int spentOn[HERO_STAT_EXPERIENCE_COUNT] = {};
+
+    bool operator==(const HeroStatsExperience& o) const
+    {
+        for (size_t i = 0; i < HERO_STAT_EXPERIENCE_COUNT; i++)
+            if (spentOn[i] != o.spentOn[i])
+                return false;
+        return true;
+    }
+    bool operator!=(const HeroStatsExperience& o) const { return !(*this == o); }
+};
+
+class CTCHeroStats
+{
+public:
+    static CTCHeroStats* FromCreature(CThingPlayerCreature* creature);
+
+    // false if the ledger buffer is absent.
+    bool GetExperienceSpentOn(HeroStatsExperience& out);
+    void SetExperienceSpentOn(const HeroStatsExperience& values);
+};

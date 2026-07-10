@@ -24,6 +24,7 @@ private:
 
     std::vector<int> appearanceDefIndexes;
     HeroMorphValues morphValues;
+    HeroStatsExperience statsExperience;
     bool hasMorphValues = false;
 
 public:
@@ -59,4 +60,7 @@ public:
     void SetMorphValues(const HeroMorphValues& values) { morphValues = values; hasMorphValues = true; }
     bool HasMorphValues() const { return hasMorphValues; }
     const HeroMorphValues& GetMorphValues() const { return morphValues; }
+
+    void SetStatsExperience(const HeroStatsExperience& values) { statsExperience = values; }
+    const HeroStatsExperience& GetStatsExperience() const { return statsExperience; }
 };
