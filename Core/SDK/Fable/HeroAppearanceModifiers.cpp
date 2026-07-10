@@ -127,8 +127,13 @@ void CTCHeroMorph::SetValues(const HeroMorphValues& values)
     for (size_t i = 0; i < HERO_MORPH_BLOB_DWORDS; i++)
         blob[i] = values.raw[i];
 
-    *((unsigned char*)this + MORPH_DIRTY_FLAG_OFFSET) = 1;
-    ((void(__thiscall*)(void*))FN_MORPH_UPDATE_PUMP)(this);
+    // Two passes: empirically the first pump re-seats attachments (sheathed
+    // weapons move) and only the second applies the skeletal bulk.
+    for (int pass = 0; pass < 2; pass++)
+    {
+        *((unsigned char*)this + MORPH_DIRTY_FLAG_OFFSET) = 1;
+        ((void(__thiscall*)(void*))FN_MORPH_UPDATE_PUMP)(this);
+    }
 }
 
 CTCHeroStats* CTCHeroStats::FromCreature(CThingPlayerCreature* creature)
