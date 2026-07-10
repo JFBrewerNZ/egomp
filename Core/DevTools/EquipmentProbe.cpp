@@ -279,6 +279,48 @@ namespace
         }
     }
 
+    // CThingObject factory + pickup action (see RE-NOTES.md):
+    //   0x703210 = CThingObject::Create(__fastcall: defIndex, pos*, name*)
+    //   0x7EB2D0 = CCreatureAction_AddRealObjectToInventory ctor
+    //              (stack action buffer, args: creature, object)
+    //   0x6644F0 = CThingCreatureBase::DoCreatureAction(action*)
+    const uintptr_t FN_THING_OBJECT_CREATE = 0x703210;
+    const uintptr_t FN_ACTION_ADD_REAL_OBJECT_CTOR = 0x7EB2D0;
+    const uintptr_t FN_DO_CREATURE_ACTION = 0x6644F0;
+    const char* const PROBE_WEAPON_DEF = "OBJECT_LEGENDARY_BROADSWORD";
+
+    void* GuardedObjectCreate(int defIndex, void* pos, void* name, unsigned long* exceptionCode)
+    {
+        *exceptionCode = 0;
+        __try
+        {
+            return ((void*(__fastcall*)(int, void*, void*))FN_THING_OBJECT_CREATE)(defIndex, pos, name);
+        }
+        __except (*exceptionCode = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
+        {
+            return nullptr;
+        }
+    }
+
+    int GuardedPickup(void* creature, void* object, unsigned long* exceptionCode)
+    {
+        // The action is constructed in a stack buffer at every game call
+        // site (~0xB0 bytes); its dtor is skipped here — probe-only leak.
+        static char actionBuffer[0x200];
+
+        *exceptionCode = 0;
+        __try
+        {
+            void* action = ((void*(__thiscall*)(void*, void*, void*))FN_ACTION_ADD_REAL_OBJECT_CTOR)(
+                actionBuffer, creature, object);
+            return ((int(__thiscall*)(void*, void*))FN_DO_CREATURE_ACTION)(creature, action);
+        }
+        __except (*exceptionCode = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
+        {
+            return 0;
+        }
+    }
+
     // Plain functions: __try cannot share a frame with unwindable objects.
     int GuardedThiscall1(uintptr_t fn, void* self, void* arg, unsigned long* exceptionCode)
     {
@@ -445,26 +487,43 @@ namespace EquipmentProbe
         std::string report;
         char buf[256];
 
-        // Modifier-removal experiment: clear ALL modifier sets on the LOCAL
-        // hero and rebuild without re-adding anything. Hair, beard and any
-        // hat should visibly vanish — proving exact-set replacement (the
-        // mechanism used to strip default clothes from remote creatures).
-        CTCHeroAttachableAppearanceModifiers* appearance =
-            CTCHeroAttachableAppearanceModifiers::FromCreature(creature);
-        if (!appearance)
-        {
-            Emit(report, "[Equip] probe: no appearance TC found");
-            ObjectInspector::AppendToLogFile(report);
+        // Weapon-spawn experiment, two stages:
+        //  1. Create a broadsword CThingObject next to the hero via the
+        //     object factory — a sword on the ground proves the factory.
+        //  2. Post an AddRealObjectToInventory action so the hero picks it
+        //     up — the game should stow it (visible on the back) exactly as
+        //     a normal pickup, proving the whole remote-weapon chain.
+        CCharString swordDefName(PROBE_WEAPON_DEF);
+        int defIndex = CDefinitionManager::Get()->GetDefGlobalIndexFromName(&swordDefName);
+
+        C3DVector spawnPos = *((CThing*)creature)->GetPos();
+        spawnPos.X += 1.0f;
+
+        sprintf_s(buf, "[Equip] probe: creating %s (def %d) at +1m...",
+            PROBE_WEAPON_DEF, defIndex);
+        Emit(report, buf);
+        ObjectInspector::AppendToLogFile(report);
+        report.clear();
+
+        CCharString emptyName("");
+        unsigned long exceptionCode = 0;
+        void* object = GuardedObjectCreate(defIndex, &spawnPos, &emptyName, &exceptionCode);
+
+        const char* rtti = object ? ObjectInspector::GetRttiName(object) : nullptr;
+        sprintf_s(buf, "[Equip] probe: factory returned %p (%s), exception 0x%X"
+            " - is there a sword on the ground?",
+            object, rtti ? rtti : "no RTTI", (unsigned)exceptionCode);
+        Emit(report, buf);
+        ObjectInspector::AppendToLogFile(report);
+        report.clear();
+
+        if (!object || !rtti)
             return;
-        }
 
-        size_t before = appearance->GetModifierDefIndexes().size();
-        appearance->ClearModifiers();
-        appearance->RebuildAttachments();
-        size_t after = appearance->GetModifierDefIndexes().size();
-
-        sprintf_s(buf, "[Equip] probe: stripped all modifiers (%u -> %u)"
-            " - did hair/beard/hat vanish?", (unsigned)before, (unsigned)after);
+        unsigned long pickupException = 0;
+        GuardedPickup(creature, object, &pickupException);
+        sprintf_s(buf, "[Equip] probe: pickup action posted (exception 0x%X)"
+            " - did the hero grab/stow the sword?", (unsigned)pickupException);
         Emit(report, buf);
         ObjectInspector::AppendToLogFile(report);
     }
