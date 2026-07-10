@@ -23,8 +23,10 @@ namespace
     const int TC_ID_HERO_MORPH = 0x03;
     const int TC_ID_HERO_STATS = 0x04;
 
-    // CTCHeroMorph body-shape inputs (serializer @0x71D020): seven floats.
-    const size_t MORPH_FLOATS_OFFSET = 0x48; // Strength Will Skill Age Morality Fatness Tan
+    // CTCHeroMorph body-shape input blob (+0x40..+0x63). Empirically:
+    // +0x40 = muscle (1.0 maxed hero, 0.048 apprentice), +0x48 = will glow,
+    // +0x50 = age, +0x54 = morality (1.0 -> halo).
+    const size_t MORPH_BLOB_OFFSET = 0x40;
 
     // CTCHeroAttachableAppearanceModifiers members, derived from its
     // serializer @0x706F40 and the appearance-reset vfunc @0x7079E0:
@@ -339,24 +341,13 @@ namespace EquipmentProbe
         else
             Emit(report, "[Equip] no CTCHeroAttachableAppearanceModifiers found");
 
-        // Body-shape morph inputs — the "hero size" the remote model lacks.
+        // Body-shape morph input blob (synced raw over the network).
         if (void* morph = FindTC(creature, TC_ID_HERO_MORPH))
         {
-            const float* f = (const float*)((const char*)morph + MORPH_FLOATS_OFFSET);
-            sprintf_s(buf, "[Equip] morph TC @ %p: strength=%.3f will=%.3f skill=%.3f"
-                " age=%.3f morality=%.3f fatness=%.3f tan=%.3f",
-                morph, f[0], f[1], f[2], f[3], f[4], f[5], f[6]);
-            Emit(report, buf);
-
-            // Neighbouring fields, in case a stat-driven morph (muscle)
-            // lives outside the seven serialized floats.
-            const float* raw = (const float*)((const char*)morph + 0x1C);
-            sprintf_s(buf, "[Equip]  morph raw +0x1C..+0x44: %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f",
-                raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7], raw[8], raw[9], raw[10]);
-            Emit(report, buf);
-            const float* raw2 = (const float*)((const char*)morph + 0x64);
-            sprintf_s(buf, "[Equip]  morph raw +0x64..+0x8C: %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f",
-                raw2[0], raw2[1], raw2[2], raw2[3], raw2[4], raw2[5], raw2[6], raw2[7], raw2[8], raw2[9], raw2[10]);
+            const float* f = (const float*)((const char*)morph + MORPH_BLOB_OFFSET);
+            sprintf_s(buf, "[Equip] morph TC @ %p blob +0x40..+0x60: "
+                "%.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f",
+                morph, f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8]);
             Emit(report, buf);
         }
         else
@@ -468,13 +459,12 @@ namespace EquipmentProbe
             return;
         }
 
-        float* f = (float*)((char*)morph + MORPH_FLOATS_OFFSET);
-        sprintf_s(buf, "[Equip] probe: local morph strength %.3f -> 1.0, fatness %.3f -> 0.9"
-            " + dirty flag (+0x3D) - watch the hero's body!", f[0], f[5]);
+        float* f = (float*)((char*)morph + MORPH_BLOB_OFFSET);
+        sprintf_s(buf, "[Equip] probe: local morph +0x40 (muscle?) %.3f -> 1.0"
+            " + dirty flag + pump - watch the hero's body!", f[0]);
         Emit(report, buf);
 
-        f[0] = 1.0f; // strength
-        f[5] = 0.9f; // fatness
+        f[0] = 1.0f; // +0x40: suspected muscle
 
         // The morph CopyFrom vfunc (0x71CD90) sets this after changing the
         // inputs; without it the per-frame update never consumes them.

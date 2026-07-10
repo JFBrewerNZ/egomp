@@ -15,13 +15,8 @@ static void WriteAppearance(SLNet::BitStream& bs, int networkId,
 {
     bs.Write((SLNet::MessageID)ID_PLAYER_APPEARANCE);
     bs.Write(networkId);
-    bs.Write(morph.strength);
-    bs.Write(morph.will);
-    bs.Write(morph.skill);
-    bs.Write(morph.age);
-    bs.Write(morph.morality);
-    bs.Write(morph.fatness);
-    bs.Write(morph.tan);
+    for (unsigned int value : morph.raw)
+        bs.Write(value);
     for (int value : exp.spentOn)
         bs.Write(value);
     bs.Write((int)modifierDefIndexes.size());
@@ -94,8 +89,7 @@ void NetPlayerManager::BroadcastLocalNetPlayerAppearance(const HeroMorphValues& 
         network->SendToHost((const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
 
     std::cout << "[NetPlayerManager] Broadcast appearance ("
-        << modifierDefIndexes.size() << " modifiers, strength "
-        << morph.strength << ")" << std::endl;
+        << modifierDefIndexes.size() << " modifiers)" << std::endl;
 }
 
 void NetPlayerManager::ReceiveNetPlayerAppearance(int networkId,

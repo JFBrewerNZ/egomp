@@ -38,7 +38,7 @@ struct PlayerState
     Vec3 up;
     Vec3 forward;
     std::vector<int> appearance; // appearance-modifier def indexes
-    float morph[7] = {};         // strength..tan body-shape values
+    unsigned int morph[9] = {};  // raw CTCHeroMorph blob (+0x40..+0x63)
     int statsExp[12] = {};       // experience spent per stat (drives physique)
     bool hasAppearance = false;
     bool announced = false; // true once the client has sent ID_CREATE_NET_PLAYER
@@ -236,7 +236,7 @@ private:
                 BitStream looks;
                 looks.Write((MessageID)ID_PLAYER_APPEARANCE);
                 looks.Write(pair.first);
-                for (float value : pair.second.morph)
+                for (unsigned int value : pair.second.morph)
                     looks.Write(value);
                 for (int value : pair.second.statsExp)
                     looks.Write(value);
@@ -332,12 +332,12 @@ private:
         in.IgnoreBytes(sizeof(MessageID));
 
         int networkId = -1;
-        float morph[7] = {};
+        unsigned int morph[9] = {};
         int statsExp[12] = {};
         int count = 0;
 
         in.Read(networkId);
-        for (float& value : morph)
+        for (unsigned int& value : morph)
             in.Read(value);
         for (int& value : statsExp)
             in.Read(value);
@@ -360,7 +360,7 @@ private:
 
         PlayerState& state = players[senderId];
         state.appearance = std::move(appearance);
-        for (int i = 0; i < 7; i++)
+        for (int i = 0; i < 9; i++)
             state.morph[i] = morph[i];
         for (int i = 0; i < 12; i++)
             state.statsExp[i] = statsExp[i];

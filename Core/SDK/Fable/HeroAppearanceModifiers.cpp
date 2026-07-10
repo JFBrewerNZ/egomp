@@ -7,7 +7,9 @@ namespace
     const int TC_ID_HERO_MORPH = 0x03;
     const int TC_ID_HERO_STATS = 0x04;
 
-    const size_t MORPH_FLOATS_OFFSET = 0x48; // Strength..Tan, 7 floats
+    const size_t MORPH_BLOB_OFFSET = 0x40;
+    const size_t MORPH_DIRTY_FLAG_OFFSET = 0x3D;
+    const uintptr_t FN_MORPH_UPDATE_PUMP = 0x71E130;
     const size_t STATS_EXP_SPENT_ON_OFFSET = 0x18; // ptr to 12 ints
 
     const uintptr_t FN_ADD_MODIFIER = 0x706880;
@@ -108,30 +110,25 @@ CTCHeroMorph* CTCHeroMorph::FromCreature(CThingPlayerCreature* creature)
 HeroMorphValues CTCHeroMorph::GetValues()
 {
     HeroMorphValues values;
-    const float* f = (const float*)((const char*)this + MORPH_FLOATS_OFFSET);
+    const unsigned int* blob = (const unsigned int*)((const char*)this + MORPH_BLOB_OFFSET);
 
-    values.strength = f[0];
-    values.will = f[1];
-    values.skill = f[2];
-    values.age = f[3];
-    values.morality = f[4];
-    values.fatness = f[5];
-    values.tan = f[6];
+    for (size_t i = 0; i < HERO_MORPH_BLOB_DWORDS; i++)
+        values.raw[i] = blob[i];
 
     return values;
 }
 
 void CTCHeroMorph::SetValues(const HeroMorphValues& values)
 {
-    float* f = (float*)((char*)this + MORPH_FLOATS_OFFSET);
+    if (GetValues() == values)
+        return;
 
-    f[0] = values.strength;
-    f[1] = values.will;
-    f[2] = values.skill;
-    f[3] = values.age;
-    f[4] = values.morality;
-    f[5] = values.fatness;
-    f[6] = values.tan;
+    unsigned int* blob = (unsigned int*)((char*)this + MORPH_BLOB_OFFSET);
+    for (size_t i = 0; i < HERO_MORPH_BLOB_DWORDS; i++)
+        blob[i] = values.raw[i];
+
+    *((unsigned char*)this + MORPH_DIRTY_FLAG_OFFSET) = 1;
+    ((void(__thiscall*)(void*))FN_MORPH_UPDATE_PUMP)(this);
 }
 
 CTCHeroStats* CTCHeroStats::FromCreature(CThingPlayerCreature* creature)

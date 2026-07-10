@@ -33,24 +33,26 @@ public:
     std::vector<int> GetModifierDefIndexes();
 };
 
-// CTCHeroMorph body-shape inputs — normalized 0..1 floats the engine
-// continuously morphs the hero model toward. Member offsets from the
-// component's serializer (0x71D020).
+// CTCHeroMorph body-shape input block at +0x40..+0x63: strength (muscle;
+// 1.0 on a maxed hero, ~0.05 on the apprentice), will (1.0 -> glowing
+// hands), skill, age, morality (1.0 -> halo), fatness, tan, teenager flag.
+// Synced as a raw blob — the exact per-field labels cost us three wrong
+// iterations, the engine only cares about the bytes. The dirty flag at
+// +0x3D plus the update pump (vtable slot 28 @0x71E130: posts
+// CMessageOnMorphChanged, recomputes, refreshes graphics, clears the
+// flag) make changes visible.
+const size_t HERO_MORPH_BLOB_DWORDS = 9; // +0x40 .. +0x63
+
 struct HeroMorphValues
 {
-    float strength = 0.0f;
-    float will = 0.0f;
-    float skill = 0.0f;
-    float age = 0.0f;
-    float morality = 0.5f;
-    float fatness = 0.5f;
-    float tan = 0.0f;
+    unsigned int raw[HERO_MORPH_BLOB_DWORDS] = {};
 
     bool operator==(const HeroMorphValues& o) const
     {
-        return strength == o.strength && will == o.will && skill == o.skill
-            && age == o.age && morality == o.morality && fatness == o.fatness
-            && tan == o.tan;
+        for (size_t i = 0; i < HERO_MORPH_BLOB_DWORDS; i++)
+            if (raw[i] != o.raw[i])
+                return false;
+        return true;
     }
     bool operator!=(const HeroMorphValues& o) const { return !(*this == o); }
 };
@@ -61,6 +63,9 @@ public:
     static CTCHeroMorph* FromCreature(CThingPlayerCreature* creature);
 
     HeroMorphValues GetValues();
+
+    // Writes the blob; when it differs from the current one, also sets the
+    // dirty flag and runs the update pump so the change becomes visible.
     void SetValues(const HeroMorphValues& values);
 };
 

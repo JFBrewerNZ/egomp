@@ -340,13 +340,8 @@ void NetMainGameComponent::SetupNetworkCallbacks()
         int count = 0;
 
         bs.Read(networkId);
-        bs.Read(morph.strength);
-        bs.Read(morph.will);
-        bs.Read(morph.skill);
-        bs.Read(morph.age);
-        bs.Read(morph.morality);
-        bs.Read(morph.fatness);
-        bs.Read(morph.tan);
+        for (unsigned int& value : morph.raw)
+            bs.Read(value);
 
         HeroStatsExperience exp;
         for (int& value : exp.spentOn)
