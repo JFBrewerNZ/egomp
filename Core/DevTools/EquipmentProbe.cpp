@@ -11,6 +11,7 @@
 #include "../SDK/Fable/DefString.h"
 #include "../SDK/Fable/DefStringTable.h"
 #include "../SDK/Fable/CharString.h"
+#include "../SDK/Fable/DefinitionManager.h"
 
 namespace
 {
@@ -29,6 +30,11 @@ namespace
     //                 OBJECT_HERO_HORNS + rebuild + refresh (no args)
     const size_t MODIFIER_VECTOR_OFFSET = 0x30;
     const uintptr_t FN_APPEARANCE_RESET_WITH_HORNS = 0x7079E0;
+    const uintptr_t FN_ADD_MODIFIER = 0x706880;
+
+    // Horns turned out to be alignment-scaled (invisible on a good hero) —
+    // a large hat is unconditional and unmistakable.
+    const char* const PROBE_MODIFIER_DEF = "OBJECT_HERO_HAT_PIMP";
 
     // CTCInventoryWeapons carried-weapon members (serializer @0x5C3A95):
     // CIntelligentPointer<CThing>, 0x10 bytes each.
@@ -404,21 +410,36 @@ namespace EquipmentProbe
             return;
         }
 
-        sprintf_s(buf, "[Equip] probe: calling appearance reset+horns @ 0x%X on TC %p"
-            " - watch the hero's head!",
-            (unsigned)FN_APPEARANCE_RESET_WITH_HORNS, appearance);
+        CCharString defName(PROBE_MODIFIER_DEF);
+        int defIndex = CDefinitionManager::Get()->GetDefGlobalIndexFromName(&defName);
+
+        sprintf_s(buf, "[Equip] probe: %s -> defIndex %d; AddModifier @ 0x%X on TC %p,"
+            " then rebuild - watch the hero's head!",
+            PROBE_MODIFIER_DEF, defIndex, (unsigned)FN_ADD_MODIFIER, appearance);
         Emit(report, buf);
         ObjectInspector::AppendToLogFile(report);
         report.clear();
 
-        unsigned long exceptionCode = 0;
-        GuardedThiscall0(FN_APPEARANCE_RESET_WITH_HORNS, appearance, &exceptionCode);
+        if (defIndex < 0)
+        {
+            Emit(report, "[Equip] probe: def name did not resolve, aborting");
+            ObjectInspector::AppendToLogFile(report);
+            return;
+        }
 
-        if (exceptionCode)
-            sprintf_s(buf, "[Equip] probe: EXCEPTION 0x%X (caught; game state may be unstable)",
-                (unsigned)exceptionCode);
+        unsigned long exceptionCode = 0;
+        GuardedThiscall1(FN_ADD_MODIFIER, appearance, (void*)(uintptr_t)defIndex, &exceptionCode);
+
+        unsigned long rebuildException = 0;
+        if (!exceptionCode)
+            GuardedThiscall0(FN_APPEARANCE_RESET_WITH_HORNS, appearance, &rebuildException);
+
+        if (exceptionCode || rebuildException)
+            sprintf_s(buf, "[Equip] probe: EXCEPTION add=0x%X rebuild=0x%X"
+                " (caught; game state may be unstable)",
+                (unsigned)exceptionCode, (unsigned)rebuildException);
         else
-            sprintf_s(buf, "[Equip] probe: call returned - did horns appear?");
+            sprintf_s(buf, "[Equip] probe: calls returned - is the hero wearing a big hat?");
         Emit(report, buf);
         ObjectInspector::AppendToLogFile(report);
     }
