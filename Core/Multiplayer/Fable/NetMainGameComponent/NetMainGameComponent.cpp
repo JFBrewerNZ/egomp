@@ -1,11 +1,15 @@
 #define NOMINMAX
 
 #include "windows.h"
-#include <conio.h>
-#include <sstream>
 #include <string>
 
 #include "NetMainGameComponent.h"
+#include "../../../Config/Config.h"
+
+// Delay before the first automatic connect after entering the world, and
+// between retries while unconnected.
+static const unsigned long long FIRST_CONNECT_DELAY_MS = 2000;
+static const unsigned long long CONNECT_RETRY_DELAY_MS = 10000;
 
 NetMainGameComponent& NetMainGameComponent::GetInstance()
 {
@@ -39,6 +43,8 @@ void NetMainGameComponent::ClearCallbacks()
 
 void NetMainGameComponent::HandleMainGameComponentShutdown()
 {
+    worldReady = false;
+
     if (!network)
         return;
 
@@ -50,6 +56,10 @@ void NetMainGameComponent::HandleMainGameComponentShutdown()
 }
 
 void NetMainGameComponent::HandleMainGameComponentPostInit() {
+    worldReady = true;
+    autoConnectEnabled = Config::Get().autoConnect;
+    nextConnectAttemptMs = GetTickCount64() + FIRST_CONNECT_DELAY_MS;
+
     Options();
 }
 
@@ -57,54 +67,41 @@ void NetMainGameComponent::HandleMainGameComponentUpdate()
 {
     Selection();
 
-    if (!network)
-        return;
-
-    network->Update();
-
-    if (network && !network->IsActive())
+    if (network)
     {
-        Disconnect();
-        Options();
+        network->Update();
+
+        if (network && !network->IsActive())
+        {
+            Disconnect();
+
+            if (autoConnectEnabled)
+            {
+                nextConnectAttemptMs = GetTickCount64() + CONNECT_RETRY_DELAY_MS;
+                std::cout << "[EgoMP] Disconnected. Retrying in "
+                    << (CONNECT_RETRY_DELAY_MS / 1000) << "s..." << std::endl;
+            }
+            else
+                Options();
+        }
+
+        return;
     }
-}
 
-void ClearInputBuffer() {
-    std::cin.clear();
-
-    while (_kbhit()) {
-        (void)_getch();
-    }
-}
-
-std::string ReadIP(std::string defaultIP = "127.0.0.1") {
-    std::string input;
-    std::cout << "IP (" << defaultIP << "): ";
-    std::getline(std::cin, input);
-    return input.empty() ? defaultIP : input;
-}
-
-unsigned short ReadPort(unsigned short defaultPort = 60000) {
-    std::string input;
-    std::cout << "Port (" << defaultPort << "): ";
-    std::getline(std::cin, input);
-
-    if (input.empty())
-        return defaultPort;
-
-    try {
-        return (unsigned short)std::stoi(input);
-    }
-    catch (...) {
-        return defaultPort;
-    }
+    if (worldReady && autoConnectEnabled && GetTickCount64() >= nextConnectAttemptMs)
+        Connect();
 }
 
 void NetMainGameComponent::Options()
 {
-    std::cout << "VK_NUMPAD1: Host" << std::endl;
-    std::cout << "VK_NUMPAD2: Connect" << std::endl;
-    std::cout << "VK_NUMPAD3: Disconnect" << std::endl;
+    const Config& config = Config::Get();
+
+    std::cout << "[EgoMP] Server: " << config.serverIp << ":" << config.serverPort
+        << " (auto-connect " << (config.autoConnect ? "on" : "off") << ")" << std::endl;
+    std::cout << "[EgoMP] NUMPAD1: host P2P session (port " << config.hostPort << ")" << std::endl;
+    std::cout << "[EgoMP] NUMPAD2: connect to server" << std::endl;
+    std::cout << "[EgoMP] NUMPAD3: disconnect" << std::endl;
+    std::cout << "[EgoMP] Edit EgoMP.ini to change these settings." << std::endl;
 }
 
 void NetMainGameComponent::Selection() {
@@ -112,7 +109,9 @@ void NetMainGameComponent::Selection() {
     {
         if (GetAsyncKeyState(VK_NUMPAD3) & 1)
         {
-            ClearInputBuffer();
+            // Explicit disconnect also opts out of auto-reconnect until the
+            // player asks to connect again (NUMPAD2) or reloads the world.
+            autoConnectEnabled = false;
             network->Disconnect();
         }
 
@@ -121,18 +120,18 @@ void NetMainGameComponent::Selection() {
 
     if (GetAsyncKeyState(VK_NUMPAD1) & 1)
     {
+        autoConnectEnabled = false;
         Host();
     }
     else if (GetAsyncKeyState(VK_NUMPAD2) & 1)
     {
+        autoConnectEnabled = Config::Get().autoConnect;
         Connect();
     }
 }
 
 void NetMainGameComponent::Host()
 {
-    ClearInputBuffer();
-
     mainGameComponent = CMainGameComponent::Get();
     network = std::make_unique<Network>();
     netPlayerManager = std::make_unique<NetPlayerManager>(
@@ -143,14 +142,15 @@ void NetMainGameComponent::Host()
 
     SetupNetworkCallbacks();
 
-    unsigned short port = ReadPort();
-    network->Host(port);
+    unsigned short port = Config::Get().hostPort;
+    std::cout << "[EgoMP] Hosting on port " << port << "..." << std::endl;
+
+    if (!network->Host(port))
+        Disconnect();
 }
 
 void NetMainGameComponent::Connect()
 {
-    ClearInputBuffer();
-
     mainGameComponent = CMainGameComponent::Get();
     network = std::make_unique<Network>();
     netPlayerManager = std::make_unique<NetPlayerManager>(
@@ -160,15 +160,21 @@ void NetMainGameComponent::Connect()
     );
 
     SetupNetworkCallbacks();
-
-    std::string ip = ReadIP();
-    unsigned short port = ReadPort();
 
     network->AddDisconnectionNotificationCallback("DisconnectionNotification", [this](int networkId) { if (networkId == 0) network->Disconnect(); });
     network->AddConnectionLostCallback("ConnectionLost", [this](int networkId) { if (networkId == 0) network->Disconnect(); });
     network->AddConnectionAttemptFailedCallback("ConnectionAttemptFailed", [this]() { network->Disconnect(); });
 
-    network->Connect(ip.c_str(), port);
+    const Config& config = Config::Get();
+    std::cout << "[EgoMP] Connecting to " << config.serverIp << ":" << config.serverPort << "..." << std::endl;
+
+    if (!network->Connect(config.serverIp.c_str(), config.serverPort))
+    {
+        Disconnect();
+
+        if (autoConnectEnabled)
+            nextConnectAttemptMs = GetTickCount64() + CONNECT_RETRY_DELAY_MS;
+    }
 }
 
 void NetMainGameComponent::Disconnect()

@@ -27,13 +27,13 @@ bool Network::Host(unsigned short port)
 
 	if (!peer)
 	{
-		MessageBoxW(NULL, L"[Network::Host] Failed to get RakPeerInterface instance!", L"Error", MB_OK);
+		std::cout << "[Network::Host] Failed to get RakPeerInterface instance!" << std::endl;
 		return false;
 	}
 
 	if (peer->IsActive())
 	{
-		MessageBoxW(NULL, L"[Network::Host] Peer already active!", L"Error", MB_OK);
+		std::cout << "[Network::Host] Peer already active!" << std::endl;
 		return false;
 	}
 
@@ -41,7 +41,7 @@ bool Network::Host(unsigned short port)
 
 	if (peer->Startup(settings.slots, &sd, 1) != RAKNET_STARTED)
 	{
-		MessageBoxW(NULL, L"[Network::Host] Failed to start hosting!", L"Error", MB_OK);
+		std::cout << "[Network::Host] Failed to start hosting!" << std::endl;
 		return false;
 	}
 
@@ -77,13 +77,13 @@ bool Network::Connect(const char* ip, unsigned short port)
 
 	if (!peer)
 	{
-		MessageBoxW(NULL, L"[Network::Connect] Failed to get RakPeerInterface instance!", L"Error", MB_OK);
+		std::cout << "[Network::Connect] Failed to get RakPeerInterface instance!" << std::endl;
 		return false;
 	}
 
 	if (peer->IsActive())
 	{
-		MessageBoxW(NULL, L"[Network::Connect] Peer already active!", L"Error", MB_OK);
+		std::cout << "[Network::Connect] Peer already active!" << std::endl;
 		return false;
 	}
 
@@ -91,13 +91,13 @@ bool Network::Connect(const char* ip, unsigned short port)
 
 	if (peer->Startup(1, &sd, 1) != RAKNET_STARTED)
 	{
-		MessageBoxW(NULL, L"[Network::Connect] Failed to start client peer!", L"Error", MB_OK);
+		std::cout << "[Network::Connect] Failed to start client peer!" << std::endl;
 		return false;
 	}
 
 	if (peer->Connect(this->settings.ip.c_str(), this->settings.port, nullptr, 0) != CONNECTION_ATTEMPT_STARTED)
 	{
-		MessageBoxW(NULL, L"[Network::Connect] Failed to connect!", L"Error", MB_OK);
+		std::cout << "[Network::Connect] Failed to start connection attempt!" << std::endl;
 		return false;
 	}
 

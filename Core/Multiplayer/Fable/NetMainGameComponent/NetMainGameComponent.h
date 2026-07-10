@@ -36,4 +36,8 @@ private:
 	void HandleMainGameComponentPostInit();
 	void HandleMainGameComponentUpdate();
 	void HandleMainGameComponentShutdown();
+
+	bool worldReady = false;
+	bool autoConnectEnabled = false;
+	unsigned long long nextConnectAttemptMs = 0;
 };

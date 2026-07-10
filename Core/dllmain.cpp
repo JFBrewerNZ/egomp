@@ -1,6 +1,7 @@
 #include "pch.h"
 #include <iostream>
 
+#include "./Config/Config.h"
 #include "./Multiplayer/Fable/Multiplayer.h"
 
 static void CreateConsole() {
@@ -9,6 +10,14 @@ static void CreateConsole() {
         freopen_s(&f, "CONOUT$", "w", stdout);
         freopen_s(&f, "CONOUT$", "w", stderr);
         freopen_s(&f, "CONIN$", "r", stdin);
+
+        SetConsoleTitleW(L"EgoMP");
+
+        // Start minimized without taking focus: stealing focus from the
+        // fullscreen game wedges its renderer.
+        HWND console = GetConsoleWindow();
+        if (console)
+            ShowWindow(console, SW_SHOWMINNOACTIVE);
     }
 }
 
@@ -22,7 +31,9 @@ BOOL APIENTRY DllMain( HMODULE hModule,
         case DLL_PROCESS_ATTACH:
         {
             DisableThreadLibraryCalls(hModule);
-            CreateConsole();
+
+            if (Config::Get().showConsole)
+                CreateConsole();
 
             Multiplayer::GetInstance();
             break;
