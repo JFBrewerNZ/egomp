@@ -291,10 +291,13 @@ namespace
 
     void* GuardedObjectCreate(int defIndex, void* pos, void* name, unsigned long* exceptionCode)
     {
+        // Call-site pattern (0x4B2018, 0x5C37E3): ecx=defIndex, edx=pos*,
+        // stack = (mode, 0, 0, CCharString* name); generic spawns pass 4.
         *exceptionCode = 0;
         __try
         {
-            return ((void*(__fastcall*)(int, void*, void*))FN_THING_OBJECT_CREATE)(defIndex, pos, name);
+            return ((void*(__fastcall*)(int, void*, int, int, int, void*))FN_THING_OBJECT_CREATE)(
+                defIndex, pos, 4, 0, 0, name);
         }
         __except (*exceptionCode = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
         {
