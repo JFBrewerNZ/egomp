@@ -12,6 +12,7 @@
 #include "../SDK/Fable/DefStringTable.h"
 #include "../SDK/Fable/CharString.h"
 #include "../SDK/Fable/DefinitionManager.h"
+#include "../SDK/Fable/HeroAppearanceModifiers.h"
 
 namespace
 {
