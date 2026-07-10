@@ -18,6 +18,14 @@ namespace
     const size_t TC_LIST_OFFSET = 0x44;
     const int TC_ID_INVENTORY_CLOTHING = 0x12;
     const int TC_ID_INVENTORY_WEAPONS = 0x13;
+    const int TC_ID_HERO_ATTACHABLE_APPEARANCE = 0x5E;
+
+    // CTCHeroAttachableAppearanceModifiers+0x14 -> attachment list: entries
+    // at 12-dword (0x30 B) stride, first field = attached CThingObject*
+    // (the worn piece as physically shown on the hero).
+    const size_t ATTACH_LIST_OFFSET = 0x14;
+    const size_t ATTACH_STRIDE_DWORDS = 12;
+    const size_t ATTACH_MAX_ENTRIES = 24;
 
     // CTCInventoryWeapons carried-weapon members (serializer @0x5C3A95):
     // CIntelligentPointer<CThing>, 0x10 bytes each.
@@ -154,6 +162,29 @@ namespace
     {
         std::cout << line << std::endl;
         report += line + "\n";
+    }
+
+    size_t FindAttachedPieces(void* creature, CThing** out, size_t max)
+    {
+        void* tc = FindTC(creature, TC_ID_HERO_ATTACHABLE_APPEARANCE);
+        if (!tc)
+            return 0;
+
+        const char* list = *(const char* const*)((const char*)tc + ATTACH_LIST_OFFSET);
+        size_t found = 0;
+
+        for (size_t i = 0; found < max && i < ATTACH_MAX_ENTRIES; i++)
+        {
+            const char* slot = list + i * ATTACH_STRIDE_DWORDS * sizeof(void*);
+            if (!ObjectInspector::IsReadableMemory(slot, sizeof(void*)))
+                break;
+
+            CThing* thing = AsThing(*(void* const*)slot);
+            if (thing && RttiContains(thing, "ThingObject"))
+                out[found++] = thing;
+        }
+
+        return found;
     }
 
     // Item-vector entry: 5 dwords {defIndex, count, ptrA, ptrB, flags}.
@@ -307,6 +338,19 @@ namespace EquipmentProbe
             (void*)creature, DefNameOf((CThing*)creature).c_str());
         Emit(report, buf);
 
+        // Worn pieces, read from the appearance-attachment list — this is
+        // what is physically visible on the hero.
+        CThing* attached[ATTACH_MAX_ENTRIES] = {};
+        size_t attachedCount = FindAttachedPieces(creature, attached, ATTACH_MAX_ENTRIES);
+        sprintf_s(buf, "[Equip] appearance attachments: %u", (unsigned)attachedCount);
+        Emit(report, buf);
+        for (size_t i = 0; i < attachedCount; i++)
+        {
+            sprintf_s(buf, "[Equip]  attached[%u] = %s", (unsigned)i,
+                DefNameOf(attached[i]).c_str());
+            Emit(report, buf);
+        }
+
         if (void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING))
             DumpCategories(report, "clothing", clothing);
         else
@@ -373,11 +417,22 @@ namespace EquipmentProbe
 
         void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING);
         std::string defName;
-        CThing* item = clothing ? FirstClothingItem(clothing, &defName) : nullptr;
+        CThing* item = nullptr;
 
-        if (!item)
+        // Prefer a genuinely-worn piece from the appearance-attachment list;
+        // fall back to an instantiated inventory entry.
+        CThing* attached[1] = {};
+        if (FindAttachedPieces(creature, attached, 1))
         {
-            Emit(report, "[Equip] probe: no owned clothing item found"
+            item = attached[0];
+            defName = DefNameOf(item);
+        }
+        else if (clothing)
+            item = FirstClothingItem(clothing, &defName);
+
+        if (!item || !clothing)
+        {
+            Emit(report, "[Equip] probe: no worn clothing item found"
                 " (check NUMPAD8 output first)");
             ObjectInspector::AppendToLogFile(report);
             return;
