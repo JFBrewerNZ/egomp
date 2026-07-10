@@ -5,7 +5,7 @@
 
 #include "NetMainGameComponent.h"
 #include "../../../Config/Config.h"
-#include "../../../Debug/ObjectInspector.h"
+#include "../../../DevTools/ObjectInspector.h"
 
 // Delay before the first automatic connect after entering the world, and
 // between retries while unconnected.
