@@ -20,6 +20,10 @@ namespace
     const int TC_ID_INVENTORY_CLOTHING = 0x12;
     const int TC_ID_INVENTORY_WEAPONS = 0x13;
     const int TC_ID_HERO_ATTACHABLE_APPEARANCE = 0x5E;
+    const int TC_ID_HERO_MORPH = 0x03;
+
+    // CTCHeroMorph body-shape inputs (serializer @0x71D020): seven floats.
+    const size_t MORPH_FLOATS_OFFSET = 0x48; // Strength Will Skill Age Morality Fatness Tan
 
     // CTCHeroAttachableAppearanceModifiers members, derived from its
     // serializer @0x706F40 and the appearance-reset vfunc @0x7079E0:
@@ -333,6 +337,18 @@ namespace EquipmentProbe
         }
         else
             Emit(report, "[Equip] no CTCHeroAttachableAppearanceModifiers found");
+
+        // Body-shape morph inputs — the "hero size" the remote model lacks.
+        if (void* morph = FindTC(creature, TC_ID_HERO_MORPH))
+        {
+            const float* f = (const float*)((const char*)morph + MORPH_FLOATS_OFFSET);
+            sprintf_s(buf, "[Equip] morph TC @ %p: strength=%.3f will=%.3f skill=%.3f"
+                " age=%.3f morality=%.3f fatness=%.3f tan=%.3f",
+                morph, f[0], f[1], f[2], f[3], f[4], f[5], f[6]);
+            Emit(report, buf);
+        }
+        else
+            Emit(report, "[Equip] no CTCHeroMorph found");
 
         if (void* clothing = FindTC(creature, TC_ID_INVENTORY_CLOTHING))
             DumpCategories(report, "clothing", clothing);
