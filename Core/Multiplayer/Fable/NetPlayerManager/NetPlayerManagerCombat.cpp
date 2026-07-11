@@ -30,12 +30,17 @@ void NetPlayerManager::HandleLocalCreatureAction(void* creature, const char* act
     if (actionType < 0)
         return;
 
+    // Movement direction at action time (world space) — directional moves
+    // like the roll use it so the puppet rolls the way the player did.
+    C3DVector direction = ((CThingPlayerCreature*)localHero)->MovementAcceleration;
+
     int networkId = localNetPlayer->GetNetworkId();
 
     SLNet::BitStream bs;
     bs.Write((SLNet::MessageID)ID_PLAYER_ACTION);
     bs.Write(networkId);
     bs.Write(actionType);
+    bs.Write(direction);
 
     if (networkId == 0)
         network->SendToAllClients((const char*)bs.GetData(), bs.GetNumberOfBytesUsed(), HIGH_PRIORITY, UNRELIABLE);
@@ -43,7 +48,7 @@ void NetPlayerManager::HandleLocalCreatureAction(void* creature, const char* act
         network->SendToHost((const char*)bs.GetData(), bs.GetNumberOfBytesUsed(), HIGH_PRIORITY, UNRELIABLE);
 }
 
-void NetPlayerManager::ReceiveNetPlayerAction(int networkId, int actionType)
+void NetPlayerManager::ReceiveNetPlayerAction(int networkId, int actionType, C3DVector direction)
 {
     // Host relays to the other clients.
     if (localNetPlayer && localNetPlayer->GetNetworkId() == 0)
@@ -52,6 +57,7 @@ void NetPlayerManager::ReceiveNetPlayerAction(int networkId, int actionType)
         bs.Write((SLNet::MessageID)ID_PLAYER_ACTION);
         bs.Write(networkId);
         bs.Write(actionType);
+        bs.Write(direction);
 
         network->SendToAllClientsExcept(networkId, (const char*)bs.GetData(), bs.GetNumberOfBytesUsed(), HIGH_PRIORITY, UNRELIABLE);
     }
@@ -63,5 +69,5 @@ void NetPlayerManager::ReceiveNetPlayerAction(int networkId, int actionType)
     if (!creature)
         return;
 
-    CombatActions::Perform(creature, (CombatActionType)actionType);
+    CombatActions::Perform(creature, (CombatActionType)actionType, direction);
 }

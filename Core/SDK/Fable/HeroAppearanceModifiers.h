@@ -140,6 +140,8 @@ enum class CombatActionType
 namespace CombatActions
 {
     // Reconstructs the given action on the creature and posts it via
-    // DoCreatureAction. SEH-guarded; unknown types are a no-op.
-    void Perform(CThingPlayerCreature* creature, CombatActionType type);
+    // DoCreatureAction. `direction` is the sender's horizontal movement
+    // direction at action time (world space), used by directional moves
+    // like the roll. SEH-guarded; unknown types are a no-op.
+    void Perform(CThingPlayerCreature* creature, CombatActionType type, const C3DVector& direction);
 }

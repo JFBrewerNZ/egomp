@@ -28,7 +28,7 @@ public:
     // Fires (game thread) for every creature action. Broadcasts the local
     // hero's whitelisted combat actions so remote puppets mirror them.
     void HandleLocalCreatureAction(void* creature, const char* actionClass);
-    void ReceiveNetPlayerAction(int networkId, int actionType);
+    void ReceiveNetPlayerAction(int networkId, int actionType, C3DVector direction);
 
     // Called every game update: broadcasts the local hero's appearance
     // whenever the modifier set changes (throttled).

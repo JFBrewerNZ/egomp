@@ -280,9 +280,11 @@ void NetMainGameComponent::SetupNetworkCallbacks()
     network->AddNetPlayerActionCallback("NetPlayerAction", [this](BitStream& bs) {
         int networkId = -1;
         int actionType = -1;
+        C3DVector direction = {};
         bs.Read(networkId);
         bs.Read(actionType);
-        netPlayerManager->ReceiveNetPlayerAction(networkId, actionType);
+        bs.Read(direction);
+        netPlayerManager->ReceiveNetPlayerAction(networkId, actionType, direction);
     });
     network->AddCreateLocalNetPlayerCallback("CreateLocalNetPlayer", [this](BitStream& bs) {
         int networkId = -1;

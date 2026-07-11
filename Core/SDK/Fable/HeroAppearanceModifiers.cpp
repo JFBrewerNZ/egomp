@@ -27,10 +27,15 @@ namespace
     const uintptr_t FN_ACTION_ADD_REAL_OBJECT_CTOR = 0x7EB2D0;
     const uintptr_t FN_DO_CREATURE_ACTION = 0x6644F0;
 
-    // Combat action builders: __thiscall(actionBuffer, creature) construct
-    // the action in a stack buffer; then DoCreatureAction posts it. From
-    // the trigger functions each move flows through (tracer capture).
-    const uintptr_t FN_BUILD_ROLL = 0x85BB60; // ControlledStrafeJump builder
+    // Combat action builders (from each move's trigger function). Actions
+    // are built in a stack buffer then posted via DoCreatureAction.
+    //   0x858030 = base strafe-jump ctor(this, creature, mode, dir2f*);
+    //              the roll builder (0x85BB60) calls it with a ZERO dir (a
+    //              neutral jump) then stamps the derived vtable. We call it
+    //              directly with the real direction so the roll is oriented.
+    const uintptr_t FN_STRAFE_JUMP_CTOR = 0x858030;
+    const uintptr_t VT_CONTROLLED_STRAFE_JUMP = 0x12766A4;
+    const int STRAFE_JUMP_MODE_ROLL = 2;
 
     const size_t MORPH_BLOB_OFFSET = 0x40;
     const size_t MORPH_DIRTY_FLAG_OFFSET = 0x3D;
@@ -277,7 +282,7 @@ int CTCInventoryWeapons::GetCarriedRangedDefIndex()
 
 namespace CombatActions
 {
-    void Perform(CThingPlayerCreature* creature, CombatActionType type)
+    void Perform(CThingPlayerCreature* creature, CombatActionType type, const C3DVector& direction)
     {
         if (!creature)
             return;
@@ -292,8 +297,15 @@ namespace CombatActions
             switch (type)
             {
             case CombatActionType::Roll:
-                action = ((void*(__thiscall*)(void*, void*))FN_BUILD_ROLL)(actionBuffer, creature);
+            {
+                // Horizontal world-space direction (2 floats) the roll goes.
+                float dir2f[2] = { direction.X, direction.Y };
+                ((void(__thiscall*)(void*, void*, int, void*))FN_STRAFE_JUMP_CTOR)(
+                    actionBuffer, creature, STRAFE_JUMP_MODE_ROLL, dir2f);
+                *(void**)actionBuffer = (void*)VT_CONTROLLED_STRAFE_JUMP;
+                action = actionBuffer;
                 break;
+            }
             default:
                 return;
             }
