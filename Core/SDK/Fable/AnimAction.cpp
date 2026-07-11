@@ -210,8 +210,11 @@ namespace AnimAction
     }
 
     // SEH portion of NoteResolvedContext (no unwindable locals allowed
-    // here). selectorKey is an anim-key: a pointer to the 4-byte name-node
-    // pointer; node+0 is the name chars.
+    // here). selectorKey's dword0 points at the name — live capture showed
+    // per-call transient heap copies whose contents compare equal (the map
+    // hashes the key value, 0x5DC020, and compares via a polymorphic
+    // comparator), so try the chars directly first, then one indirection
+    // deeper (the 0x99EBF0 node layout: node+0 = char*).
     static bool ReadResolvedInfo(void* context, void* selectorKey,
         unsigned int* id0, unsigned int* id1, char* name, size_t nameSize)
     {
@@ -228,6 +231,9 @@ namespace AnimAction
             const char* node = *(const char* const*)selectorKey;
             if (!IsReadable(node, 8))
                 return false;
+
+            if (CopyPlausibleName(node, name, nameSize))
+                return true;
 
             return CopyPlausibleName(*(const char* const*)node, name, nameSize);
         }

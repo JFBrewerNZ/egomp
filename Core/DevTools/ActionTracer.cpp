@@ -252,14 +252,28 @@ namespace
         {
             char keyDesc[96];
             DescribeValue(animKey, keyDesc, sizeof(keyDesc));
+            char ctxDesc[96] = "null";
+            if (context)
+                DescribeValue(context, ctxDesc, sizeof(ctxDesc));
+
+            // What the registry now knows for this context's id — confirms
+            // whether name extraction worked.
+            char knownName[AnimActionFields::NAME_MAX] = "";
+            if (context && ObjectInspector::IsReadableMemory(context, 8))
+            {
+                const unsigned int* id = (const unsigned int*)context;
+                AnimAction::LookupContextName(id[0], id[1],
+                    knownName, sizeof(knownName), nullptr);
+            }
 
             char creatureName[128] = "?";
             const char* creatureRtti = ObjectInspector::GetRttiName(creature);
             if (creatureRtti) Demangle(creatureRtti, creatureName, sizeof(creatureName));
 
-            char line[360];
-            sprintf_s(line, "[AnimResolve] creature=%-22s key=%p(%s) flag=%d -> ctx=%p",
-                creatureName, animKey, keyDesc, flag, context);
+            char line[480];
+            sprintf_s(line, "[AnimResolve] creature=%-22s key=%p(%s) flag=%d -> ctx=%p(%s) name=%s",
+                creatureName, animKey, keyDesc, flag, context, ctxDesc,
+                knownName[0] ? knownName : "<none>");
 
             if (g_lastResolveLine != line)
             {
