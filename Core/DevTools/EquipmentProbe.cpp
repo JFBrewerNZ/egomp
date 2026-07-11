@@ -508,45 +508,55 @@ namespace EquipmentProbe
         std::string report;
         char buf[256];
 
-        // Weapon-spawn experiment, two stages:
-        //  1. Create a broadsword CThingObject next to the hero via the
-        //     object factory — a sword on the ground proves the factory.
-        //  2. Post an AddRealObjectToInventory action so the hero picks it
-        //     up — the game should stow it (visible on the back) exactly as
-        //     a normal pickup, proving the whole remote-weapon chain.
-        CCharString swordDefName(PROBE_WEAPON_DEF);
-        int defIndex = CDefinitionManager::Get()->GetDefGlobalIndexFromName(&swordDefName);
-
-        C3DVector spawnPos = *((CThing*)creature)->GetPos();
-        spawnPos.X += 1.0f;
-
-        sprintf_s(buf, "[Equip] probe: creating %s (def %d) at +1m...",
-            PROBE_WEAPON_DEF, defIndex);
-        Emit(report, buf);
-        ObjectInspector::AppendToLogFile(report);
-        report.clear();
-
-        CCharString emptyName("");
-        unsigned long exceptionCode = 0;
-        void* object = GuardedObjectCreate(defIndex, &spawnPos, &emptyName, &exceptionCode);
-
-        const char* rtti = object ? ObjectInspector::GetRttiName(object) : nullptr;
-        sprintf_s(buf, "[Equip] probe: factory returned %p (%s), exception 0x%X"
-            " - is there a sword on the ground?",
-            object, rtti ? rtti : "no RTTI", (unsigned)exceptionCode);
-        Emit(report, buf);
-        ObjectInspector::AppendToLogFile(report);
-        report.clear();
-
-        if (!object || !rtti)
+        // Validity test for the on-back restore function: feed it the
+        // hero's OWN existing carried weapon (a known-good source) instead
+        // of a fresh factory object. A duplicate on the back = the function
+        // works and the earlier crash was just an under-initialised object.
+        void* weapons = FindTC(creature, TC_ID_INVENTORY_WEAPONS);
+        if (!weapons)
+        {
+            Emit(report, "[Equip] probe: no weapons TC");
+            ObjectInspector::AppendToLogFile(report);
             return;
+        }
 
-        // Attach it as a carried weapon on the back (the puppet path — no
-        // inventory, no popup) instead of the pickup action.
+        // First weapon Thing in the weapons +0x138 pool (pool[0] = the
+        // carried melee weapon in every dump so far).
+        const char* pool = *(const char* const*)((const char*)weapons + 0x138);
+        CThing* sourceWeapon = nullptr;
+        if (ObjectInspector::IsReadableMemory(pool, sizeof(void*)))
+        {
+            for (size_t i = 0; i < 0x140; i++)
+            {
+                const char* slot = pool + i * sizeof(void*);
+                if (!ObjectInspector::IsReadableMemory(slot, sizeof(void*)))
+                    break;
+                CThing* t = AsThing(*(void* const*)slot);
+                if (t && strstr(ObjectInspector::GetRttiName(t), "ThingObject"))
+                {
+                    sourceWeapon = t;
+                    break;
+                }
+            }
+        }
+
+        if (!sourceWeapon)
+        {
+            Emit(report, "[Equip] probe: no carried weapon found to re-attach");
+            ObjectInspector::AppendToLogFile(report);
+            return;
+        }
+
+        sprintf_s(buf, "[Equip] probe: re-attaching existing carried weapon %s @ %p"
+            " via 0x5C36C2 on the hero...", DefNameOf(sourceWeapon).c_str(), (void*)sourceWeapon);
+        Emit(report, buf);
+        ObjectInspector::AppendToLogFile(report);
+        report.clear();
+
         unsigned long attachException = 0;
-        GuardedAttachCarried(creature, object, &attachException);
-        sprintf_s(buf, "[Equip] probe: attach-carried called (exception 0x%X)"
-            " - is a sword now on the hero's back?", (unsigned)attachException);
+        GuardedAttachCarried(creature, sourceWeapon, &attachException);
+        sprintf_s(buf, "[Equip] probe: attach returned (exception 0x%X)"
+            " - did a second weapon appear on the back?", (unsigned)attachException);
         Emit(report, buf);
         ObjectInspector::AppendToLogFile(report);
     }
