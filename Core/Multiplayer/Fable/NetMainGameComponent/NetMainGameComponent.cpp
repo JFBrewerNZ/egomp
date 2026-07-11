@@ -75,7 +75,10 @@ void NetMainGameComponent::HandleMainGameComponentUpdate()
         network->Update();
 
         if (network && netPlayerManager)
+        {
             netPlayerManager->UpdateAppearanceSync();
+            netPlayerManager->UpdateCombat();
+        }
 
         if (network && !network->IsActive())
         {

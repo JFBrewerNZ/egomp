@@ -32,6 +32,11 @@ private:
     int appliedMeleeWeaponDef = -1;  // last def actually given to the creature
     int appliedRangedWeaponDef = -1;
 
+    // Held-block state: refreshed while the remote player keeps blocking; the
+    // puppet re-posts the block action until this time passes.
+    unsigned long long blockActiveUntilMs = 0;
+    unsigned long long lastBlockPostMs = 0;
+
 public:
     NetPlayer();
     ~NetPlayer() = default;
@@ -76,4 +81,9 @@ public:
     int GetAppliedMeleeWeaponDef() const { return appliedMeleeWeaponDef; }
     int GetAppliedRangedWeaponDef() const { return appliedRangedWeaponDef; }
     void SetAppliedWeaponDefs(int melee, int ranged) { appliedMeleeWeaponDef = melee; appliedRangedWeaponDef = ranged; }
+
+    void RefreshBlock(unsigned long long untilMs) { blockActiveUntilMs = untilMs; }
+    unsigned long long GetBlockActiveUntilMs() const { return blockActiveUntilMs; }
+    unsigned long long GetLastBlockPostMs() const { return lastBlockPostMs; }
+    void SetLastBlockPostMs(unsigned long long ms) { lastBlockPostMs = ms; }
 };

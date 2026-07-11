@@ -1,7 +1,14 @@
 #include <cstring>
+#include <windows.h>
 
 #include "NetPlayerManager.h"
 #include "../../../SDK/Fable/HeroAppearanceModifiers.h"
+
+// While a remote player holds block, they keep sending Block actions; each
+// refreshes the puppet's block for this long, and the puppet re-posts the
+// block action at this interval to sustain the pose without flickering.
+static const unsigned long long BLOCK_HOLD_WINDOW_MS = 400;
+static const unsigned long long BLOCK_REPOST_INTERVAL_MS = 250;
 
 // Maps an action's demangled RTTI class to a synced CombatActionType, or
 // -1 if the action is not replicated. Kept deliberately small — each entry
@@ -82,9 +89,41 @@ void NetPlayerManager::ReceiveNetPlayerAction(int networkId, int actionType, C3D
     if (actionType < 0 || actionType >= (int)CombatActionType::Count)
         return;
 
+    // Block is a held state: refresh the puppet's block window instead of
+    // firing once. UpdateCombat sustains it. Other actions fire immediately.
+    if (actionType == (int)CombatActionType::Block)
+    {
+        if (NetPlayer* netPlayer = FindNetPlayer(networkId))
+            netPlayer->RefreshBlock(GetTickCount64() + BLOCK_HOLD_WINDOW_MS);
+        return;
+    }
+
     CThingPlayerCreature* creature = GetCreatureFromNetworkId(networkId);
     if (!creature)
         return;
 
     CombatActions::Perform(creature, (CombatActionType)actionType, direction);
+}
+
+void NetPlayerManager::UpdateCombat()
+{
+    unsigned long long now = GetTickCount64();
+
+    for (auto& netPlayer : netPlayers)
+    {
+        if (!netPlayer || !netPlayer->IsSpawned())
+            continue;
+
+        if (now >= netPlayer->GetBlockActiveUntilMs())
+            continue;
+        if (now - netPlayer->GetLastBlockPostMs() < BLOCK_REPOST_INTERVAL_MS)
+            continue;
+
+        CThingPlayerCreature* creature = GetCreatureFromNetworkId(netPlayer->GetNetworkId());
+        if (!creature)
+            continue;
+
+        CombatActions::Perform(creature, CombatActionType::Block, C3DVector{});
+        netPlayer->SetLastBlockPostMs(now);
+    }
 }

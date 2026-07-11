@@ -30,6 +30,9 @@ public:
     void HandleLocalCreatureAction(void* creature, const char* actionClass);
     void ReceiveNetPlayerAction(int networkId, int actionType, C3DVector direction);
 
+    // Called every frame: sustains held states (block) on remote puppets.
+    void UpdateCombat();
+
     // Called every game update: broadcasts the local hero's appearance
     // whenever the modifier set changes (throttled).
     void UpdateAppearanceSync();
