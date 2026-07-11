@@ -30,8 +30,9 @@ namespace
 
     // CTCInventoryWeapons::CreateCarriedWeapon(defIndex) — the menu-equip
     // creation path (factory hook traced it: mode 0 for the hero, from
-    // creature+0x90).
+    // creature+0x90) — and its inventory gate.
     const uintptr_t FN_CREATE_CARRIED_WEAPON = 0x5BE8F3;
+    const uintptr_t FN_INVENTORY_WEAPON_GATE = 0x5BDF08;
 
     // Object factory + pickup action (see RE-NOTES.md / EquipmentProbe).
     const uintptr_t FN_THING_OBJECT_CREATE = 0x703210;
@@ -302,8 +303,23 @@ CThing* CTCInventoryWeapons::GetCarriedMeleeThing()
     return ((CThing*(__thiscall*)(void*))FN_INTELLIGENT_POINTER_GET)(holder);
 }
 
-CThing* CTCInventoryWeapons::CreateCarriedWeapon(int defGlobalIndex)
+int CTCInventoryWeapons::GetInventoryWeaponGate(int defGlobalIndex)
 {
+    __try
+    {
+        return ((int(__thiscall*)(void*, int))FN_INVENTORY_WEAPON_GATE)(
+            this, defGlobalIndex);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return -999;
+    }
+}
+
+CThing* CTCInventoryWeapons::CreateCarriedWeapon(int defGlobalIndex, unsigned long* exceptionCode)
+{
+    if (exceptionCode)
+        *exceptionCode = 0;
     if (defGlobalIndex <= 0)
         return nullptr;
 
@@ -312,7 +328,8 @@ CThing* CTCInventoryWeapons::CreateCarriedWeapon(int defGlobalIndex)
         return ((CThing*(__thiscall*)(void*, int))FN_CREATE_CARRIED_WEAPON)(
             this, defGlobalIndex);
     }
-    __except (EXCEPTION_EXECUTE_HANDLER)
+    __except (exceptionCode ? (*exceptionCode = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
+        : EXCEPTION_EXECUTE_HANDLER)
     {
         return nullptr;
     }

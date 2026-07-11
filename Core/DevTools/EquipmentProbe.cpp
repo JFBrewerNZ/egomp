@@ -648,16 +648,46 @@ namespace EquipmentProbe
         char buf[320];
 
         CThing* original = weapons->GetCarriedMeleeThing();
+        int carriedDef = weapons->GetCarriedMeleeDefIndex();
 
+        // Candidate defs: the probe broadsword plus the two weapons seen in
+        // this save's equip traces (stick 5545, katana 5475) and whatever
+        // is currently carried. The gate (0x5BDF08) reveals which the
+        // inventory actually holds; the first owned one that is NOT already
+        // carried gets equipped so the change is visible.
         CCharString defName(PROBE_WEAPON_DEF);
-        int defIndex = CDefinitionManager::Get()->GetDefGlobalIndexFromName(&defName);
+        int candidates[4] = {
+            CDefinitionManager::Get()->GetDefGlobalIndexFromName(&defName),
+            5545, 5475, carriedDef,
+        };
 
-        CThing* fresh = weapons->CreateCarriedWeapon(defIndex);
+        int chosen = -1;
+        for (int i = 0; i < 4; i++)
+        {
+            int gate = weapons->GetInventoryWeaponGate(candidates[i]);
+            sprintf_s(buf, "[Equip] weapon probe: gate(def %d) = %d%s",
+                candidates[i], gate,
+                candidates[i] == carriedDef ? " (currently carried)" : "");
+            ObjectInspector::LogLine(buf);
+
+            if (gate > 0 && chosen < 0 && candidates[i] != carriedDef)
+                chosen = candidates[i];
+        }
+
+        if (chosen < 0)
+        {
+            ObjectInspector::LogLine("[Equip] weapon probe: no owned, not-carried weapon def"
+                " passed the gate — nothing to equip");
+            return;
+        }
+
+        unsigned long createException = 0;
+        CThing* fresh = weapons->CreateCarriedWeapon(chosen, &createException);
 
         if (!fresh)
         {
-            sprintf_s(buf, "[Equip] weapon probe: CreateCarriedWeapon(%s def %d) FAILED",
-                PROBE_WEAPON_DEF, defIndex);
+            sprintf_s(buf, "[Equip] weapon probe: CreateCarriedWeapon(def %d) FAILED"
+                " (exception %08lX)", chosen, createException);
             ObjectInspector::LogLine(buf);
             return;
         }
