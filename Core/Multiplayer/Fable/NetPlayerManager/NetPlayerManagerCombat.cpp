@@ -23,6 +23,7 @@ static void WriteAnimFields(SLNet::BitStream& bs, const AnimActionFields& fields
     bs.Write(fields.keyExtra);
     bs.Write(fields.ctxId0);
     bs.Write(fields.ctxId1);
+    bs.Write(fields.ctxFlag);
     bs.Write(fields.loops);
     bs.Write(fields.a8);
     bs.Write(fields.a9);
@@ -33,6 +34,10 @@ static void WriteAnimFields(SLNet::BitStream& bs, const AnimActionFields& fields
     unsigned char nameLen = (unsigned char)std::strlen(fields.name);
     bs.Write(nameLen);
     bs.WriteAlignedBytes((const unsigned char*)fields.name, nameLen);
+
+    unsigned char ctxNameLen = (unsigned char)std::strlen(fields.ctxName);
+    bs.Write(ctxNameLen);
+    bs.WriteAlignedBytes((const unsigned char*)fields.ctxName, ctxNameLen);
 }
 
 // Maps an action's demangled RTTI class to a synced CombatActionType, or
@@ -66,7 +71,10 @@ void NetPlayerManager::HandleLocalCreatureAction(void* creature, void* action, c
     if (AnimAction::ClassHasAnimLayout(actionClass))
     {
         AnimActionFields fields;
-        if (AnimAction::Extract(action, fields))
+        // Without a key name or a resolver-learned context name the
+        // receiver has nothing to replay from — skip those.
+        if (AnimAction::Extract(action, fields)
+            && (fields.name[0] || fields.ctxName[0]))
             SendLocalAnimAction(fields);
     }
 
@@ -177,12 +185,13 @@ void NetPlayerManager::ReceiveNetPlayerAnim(int networkId, const AnimActionField
     if (!creature)
         return;
 
-    // The sender's context pointer is meaningless here — resolve THIS
-    // machine's context for the same portable id from the registry (fed by
-    // every anim action seen locally). The PlayAnimation ctor faults on a
-    // null context, so without a local match the anim is skipped.
-    void* context = AnimAction::FindContext(fields.ctxId0, fields.ctxId1);
-    if (!context && !fields.name[0])
+    // Mint a FRESH context on the puppet via the game's own resolver —
+    // captured context pointers are per-action transients and replaying
+    // one is use-after-free (crashed the game before this approach). The
+    // PlayAnimation ctor faults on a null context, so no context = skip.
+    const char* resolveName = fields.ctxName[0] ? fields.ctxName : fields.name;
+    void* context = AnimAction::ResolveContext(creature, resolveName, fields.ctxFlag);
+    if (!context)
         return;
 
     AnimAction::Play(creature, fields, context);

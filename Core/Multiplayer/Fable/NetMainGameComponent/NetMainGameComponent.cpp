@@ -182,9 +182,10 @@ void NetMainGameComponent::HandleDebugKeys()
 
     // Local end-to-end test of the animation-sync apply path, no LAN
     // needed: NUMPAD9 replays the newest captured anim action on the local
-    // hero, resolving the context from the registry by its portable id —
-    // exactly what a remote peer does with an incoming ID_PLAYER_ANIM.
-    // Falls back to the raw captured pointer if the registry lookup fails.
+    // hero by resolving a FRESH context from the anim name — exactly what a
+    // remote peer does with an incoming ID_PLAYER_ANIM. (Never replays a
+    // captured context pointer: those are per-action transients and doing
+    // so crashed the game.)
     if (replayAnim)
     {
         AnimActionFields fields;
@@ -193,22 +194,21 @@ void NetMainGameComponent::HandleDebugKeys()
             std::cout << "[EgoMP] Anim replay: nothing captured yet — stand near NPCs first"
                 << std::endl;
         }
+        else if (!fields.ctxName[0] && !fields.name[0])
+        {
+            std::cout << "[EgoMP] Anim replay: last capture has no resolved name"
+                " (resolver hook saw nothing for ctxId=" << std::hex
+                << fields.ctxId0 << "/" << fields.ctxId1 << std::dec << ")" << std::endl;
+        }
         else
         {
-            void* context = AnimAction::FindContext(fields.ctxId0, fields.ctxId1);
-            const char* mode = "registry";
-            if (!context)
-            {
-                context = fields.localContext;
-                mode = "raw-captured (registry MISS)";
-            }
+            const char* resolveName = fields.ctxName[0] ? fields.ctxName : fields.name;
+            void* context = AnimAction::ResolveContext(creature, resolveName, fields.ctxFlag);
 
-            bool ok = AnimAction::Play(creature, fields, context);
-            std::cout << "[EgoMP] Anim replay '"
-                << (fields.name[0] ? fields.name : "<nameless>")
+            bool ok = context && AnimAction::Play(creature, fields, context);
+            std::cout << "[EgoMP] Anim replay '" << resolveName
                 << "' (d24=" << fields.d24 << ", loops=" << fields.loops
-                << ", ctxId=" << std::hex << fields.ctxId0 << "/" << fields.ctxId1
-                << std::dec << ", context=" << mode << "): "
+                << ", ctx=" << (context ? "resolved" : "RESOLVE FAILED") << "): "
                 << (ok ? "posted" : "FAILED") << std::endl;
         }
     }
@@ -331,6 +331,7 @@ void NetMainGameComponent::SetupNetworkCallbacks()
         bs.Read(fields.keyExtra);
         bs.Read(fields.ctxId0);
         bs.Read(fields.ctxId1);
+        bs.Read(fields.ctxFlag);
         bs.Read(fields.loops);
         bs.Read(fields.a8);
         bs.Read(fields.a9);
@@ -345,6 +346,14 @@ void NetMainGameComponent::SetupNetworkCallbacks()
         if (nameLen > 0 && !bs.ReadAlignedBytes((unsigned char*)fields.name, nameLen))
             return;
         fields.name[nameLen] = '\0';
+
+        unsigned char ctxNameLen = 0;
+        bs.Read(ctxNameLen);
+        if (ctxNameLen >= AnimActionFields::NAME_MAX)
+            return;
+        if (ctxNameLen > 0 && !bs.ReadAlignedBytes((unsigned char*)fields.ctxName, ctxNameLen))
+            return;
+        fields.ctxName[ctxNameLen] = '\0';
 
         netPlayerManager->ReceiveNetPlayerAnim(networkId, fields);
     });

@@ -34,13 +34,20 @@ struct AnimActionFields
     unsigned char a8 = 0, a9 = 0, aa = 0, ab = 0, b0 = 0;
 
     // Portable identity of the +0x74 context object: its first two dwords.
-    // Confirmed live (2026-07-11): the same {id0, id1} pair appears at
-    // different context addresses across different creatures (NPCs AND the
-    // player) — e.g. sequential table entries 0xA30..0xA35 with matching
-    // second dwords. A receiver resolves these against contexts it has seen
-    // locally (the registry below).
+    // The same {id0, id1} pair appears at different context addresses (the
+    // context is a TRANSIENT per-action object — replaying a captured
+    // pointer is use-after-free, confirmed by a crash 2026-07-11). The id
+    // is used to look up the anim NAME captured at the resolver hook.
     unsigned int ctxId0 = 0;
     unsigned int ctxId1 = 0;
+
+    // Animation name of the context, learned from the resolver hook
+    // (0x662FA0's map is keyed by anim-name keys — "nameless" ambient
+    // actions do have names, they are just resolved before the ctor).
+    // This is what goes over the wire; the receiver re-resolves it into a
+    // fresh context on its own machine.
+    char ctxName[NAME_MAX] = "";
+    int ctxFlag = 1; // the resolver's second argument (observed 1)
 
     // Machine-local pointers captured for diagnostics / local replay only —
     // never sent over the wire.
@@ -74,15 +81,21 @@ namespace AnimAction
     // registry first.
     bool Play(CThingPlayerCreature* creature, const AnimActionFields& fields, void* context);
 
-    // --- Context registry ---
-    // Every PlayAnimation-family action observed locally (any creature; the
-    // tracer hook feeds this) records its context pointer under its
-    // portable {id0, id1}. A remote player's anim is then replayed with
-    // THIS machine's context for the same id.
-    void RegisterContext(void* context, unsigned int id0, unsigned int id1);
+    // --- Context-name registry ---
+    // Fed by the resolver hook (ActionTracer hooks 0x662FA0): each resolved
+    // context's {id0, id1} is recorded together with the anim NAME the
+    // resolver was called with. Contexts themselves are transient — only
+    // the name is stored.
+    void NoteResolvedContext(void* context, void* selectorKey, int flag);
 
-    // The locally-known context for an id, revalidated (still readable and
-    // still carrying the same id dwords) before being returned. nullptr if
-    // unknown or stale.
-    void* FindContext(unsigned int id0, unsigned int id1);
+    // The anim name (and resolver flag) recorded for a context id. False if
+    // this machine has not seen that id resolved yet.
+    bool LookupContextName(unsigned int id0, unsigned int id1,
+        char* nameOut, size_t nameOutSize, int* flagOut);
+
+    // Mints a FRESH context for the creature by calling the game's own
+    // resolver (0x662FA0) with a key built from the name — the only safe
+    // way to obtain one (captured pointers die with their action).
+    // SEH-guarded; nullptr on failure.
+    void* ResolveContext(CThingPlayerCreature* creature, const char* name, int flag);
 }

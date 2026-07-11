@@ -21,6 +21,12 @@ namespace
     const uintptr_t FN_PLAY_ANIM_CTOR_RESOLVING = 0x8424F0;
     const uintptr_t FN_PLAY_ANIM_CTOR_RESOLVING11 = 0x842660;
 
+    // The anim-context resolver itself: __thiscall(creature, animKey*,
+    // flag) -> fresh playback context. Hooked ALWAYS (not just while
+    // logging): it is where context ids get associated with anim names —
+    // the wire currency of animation sync.
+    const uintptr_t FN_RESOLVE_ANIM_CONTEXT = 0x662FA0;
+
     bool g_installed = false;
     bool g_enabled = false;
     ActionTracer::ActionObserver g_observer;
@@ -59,7 +65,11 @@ namespace
         unsigned int a7, unsigned int a8,
         unsigned int a9, unsigned int a10, unsigned int a11) = nullptr;
 
+    void*(__fastcall* OResolveAnimContext)(void* creature, void* edx,
+        void* animKey, int flag) = nullptr;
+
     std::string g_lastCtorLine;
+    std::string g_lastResolveLine;
 
     void Demangle(const char* rtti, char* out, size_t outSize)
     {
@@ -151,12 +161,13 @@ namespace
         if (fields.localContext)
             DescribeValue(fields.localContext, ctxDesc, sizeof(ctxDesc));
 
-        char line[480];
+        char line[560];
         sprintf_s(line,
-            "[AnimAction] %-38s on %-22s name=%s key0=%p d20=%08X d24=%08X keyX=%08X "
+            "[AnimAction] %-38s on %-22s name=%s ctxName=%s key0=%p d20=%08X d24=%08X keyX=%08X "
             "loops=%d a8=%u a9=%u aa=%u ab=%u b0=%u ctx=%p(%s)",
             actionName, creatureName,
             fields.name[0] ? fields.name : "<none>",
+            fields.ctxName[0] ? fields.ctxName : "<unknown>",
             fields.localKey0,
             fields.d20, fields.d24, fields.keyExtra, fields.loops,
             fields.a8, fields.a9, fields.aa, fields.ab, fields.b0,
@@ -228,17 +239,47 @@ namespace
             a4, a5, animKey, a7, a8, a9, a10, a11);
     }
 
+    void* __fastcall HResolveAnimContext(void* creature, void* edx,
+        void* animKey, int flag)
+    {
+        void* context = OResolveAnimContext(creature, edx, animKey, flag);
+
+        // Associate the context's portable id with the anim name the game
+        // resolved it from — feeds the wire-side name lookup.
+        AnimAction::NoteResolvedContext(context, animKey, flag);
+
+        if (g_enabled)
+        {
+            char keyDesc[96];
+            DescribeValue(animKey, keyDesc, sizeof(keyDesc));
+
+            char creatureName[128] = "?";
+            const char* creatureRtti = ObjectInspector::GetRttiName(creature);
+            if (creatureRtti) Demangle(creatureRtti, creatureName, sizeof(creatureName));
+
+            char line[360];
+            sprintf_s(line, "[AnimResolve] creature=%-22s key=%p(%s) flag=%d -> ctx=%p",
+                creatureName, animKey, keyDesc, flag, context);
+
+            if (g_lastResolveLine != line)
+            {
+                g_lastResolveLine = line;
+                ObjectInspector::LogLine(line);
+            }
+        }
+
+        return context;
+    }
+
     int __fastcall HDoCreatureAction(void* creature, void* edx, void* action)
     {
         const char* actionRtti = ObjectInspector::GetRttiName(action);
         char actionName[128] = "?";
         if (actionRtti) Demangle(actionRtti, actionName, sizeof(actionName));
 
-        // Anim-family actions always feed the context registry, tracer on or
-        // off — a remote player's anim can only be replayed with a context
-        // this machine has already seen locally. Extraction is limited to
-        // the 0x693B30-layout classes (PlayCombatAnimation differs and
-        // would register garbage).
+        // Extraction is limited to the 0x693B30-layout classes
+        // (PlayCombatAnimation differs and would extract garbage). The
+        // capture is kept tracer-on-or-off so NUMPAD9 always has material.
         bool isAnimFamily = actionRtti && IsAnimFamilyClass(actionName);
         AnimActionFields animFields;
         bool animExtracted = false;
@@ -247,8 +288,6 @@ namespace
             animExtracted = AnimAction::Extract(action, animFields);
             if (animExtracted)
             {
-                AnimAction::RegisterContext(animFields.localContext,
-                    animFields.ctxId0, animFields.ctxId1);
                 g_lastAnim = animFields;
                 g_hasLastAnim = true;
             }
@@ -335,8 +374,16 @@ namespace ActionTracer
                 reinterpret_cast<void**>(&OPlayAnimCtorResolving11)) == MH_OK
             && MH_EnableHook(reinterpret_cast<void*>(FN_PLAY_ANIM_CTOR_RESOLVING11)) == MH_OK;
 
-        char line[128];
-        sprintf_s(line, "[AnimTracer] ctor hooks: 8-arg %s, 11-arg %s",
+        // The resolver hook is load-bearing for animation sync (it supplies
+        // the ctxId -> anim-name mapping), unlike the diagnostic ctor hooks.
+        bool resolveOk = MH_CreateHook(reinterpret_cast<void*>(FN_RESOLVE_ANIM_CONTEXT),
+                reinterpret_cast<void*>(&HResolveAnimContext),
+                reinterpret_cast<void**>(&OResolveAnimContext)) == MH_OK
+            && MH_EnableHook(reinterpret_cast<void*>(FN_RESOLVE_ANIM_CONTEXT)) == MH_OK;
+
+        char line[160];
+        sprintf_s(line, "[AnimTracer] hooks: resolver %s, ctor8 %s, ctor11 %s",
+            resolveOk ? "ok" : "FAILED",
             ctor8Ok ? "ok" : "FAILED", ctor11Ok ? "ok" : "FAILED");
         ObjectInspector::LogLine(line);
     }

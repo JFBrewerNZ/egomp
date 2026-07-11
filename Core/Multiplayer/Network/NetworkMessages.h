@@ -4,7 +4,7 @@
 
 // Bumped whenever a payload changes shape; mismatching peers are rejected
 // at ID_CONNECTION_NOTIFICATION.
-const int EGOMP_PROTOCOL_VERSION = 12;
+const int EGOMP_PROTOCOL_VERSION = 13;
 
 // Every payload is prefixed with its [uint8 messageId].
 // "host" below means the session authority: either a hosting player (P2P)
@@ -68,13 +68,15 @@ enum NetworkMessages
 
     // sender -> host -> other clients:
     // [int networkId][uint32 d20][uint32 d24][uint32 keyExtra]
-    // [uint32 ctxId0][uint32 ctxId1][int loops]
-    // [5 x uint8 flag bytes a8 a9 aa ab b0][uint8 nameLen][nameLen chars]
-    // A PlayAnimation-family action the sender's hero performed. Named
-    // anims (scripted/spell) carry the animation name; nameLen 0 = a
-    // nameless anim (NPC-ambient style: empty key + the anim context whose
-    // portable id is ctxId0/ctxId1). The receiver resolves the id against
-    // contexts it has seen locally and replays with its own pointer.
+    // [uint32 ctxId0][uint32 ctxId1][int ctxFlag][int loops]
+    // [5 x uint8 flag bytes a8 a9 aa ab b0]
+    // [uint8 nameLen][nameLen chars][uint8 ctxNameLen][ctxNameLen chars]
+    // A PlayAnimation-family action the sender's hero performed. ctxName is
+    // the animation name the sender's resolver hook recorded for the
+    // action's context id; the receiver calls the game's own resolver
+    // (0x662FA0) with it to mint a FRESH context on the puppet's machine
+    // (context pointers are per-action transients — never reused), then
+    // replays via a stack-constructed CCreatureAction_PlayAnimation.
     // Unreliable.
     ID_PLAYER_ANIM
 };

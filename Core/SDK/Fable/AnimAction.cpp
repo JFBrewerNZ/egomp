@@ -1,6 +1,7 @@
 #include "AnimAction.h"
 
 #include <cstring>
+#include <string>
 #include <unordered_map>
 #include <windows.h>
 
@@ -18,6 +19,11 @@ namespace
 
     const uintptr_t FN_DO_CREATURE_ACTION = 0x6644F0;
     const uintptr_t FN_ACTION_DTOR = 0x693EF0;
+
+    // Anim-context resolver: __thiscall(creature, animKey*, flag) — looks
+    // the key up in the creature's anim-set map and returns a fresh
+    // playback context (the object PlayAnimation stores at +0x74).
+    const uintptr_t FN_RESOLVE_ANIM_CONTEXT = 0x662FA0;
 
     const size_t OFF_D20 = 0x20;
     const size_t OFF_D24 = 0x24;
@@ -82,6 +88,8 @@ namespace
         {
             out.ctxId0 = ((const unsigned int*)out.localContext)[0];
             out.ctxId1 = ((const unsigned int*)out.localContext)[1];
+            AnimAction::LookupContextName(out.ctxId0, out.ctxId1,
+                out.ctxName, sizeof(out.ctxName), &out.ctxFlag);
         }
         out.a8 = *(const unsigned char*)(base + OFF_A8 + 0);
         out.a9 = *(const unsigned char*)(base + OFF_A8 + 1);
@@ -186,42 +194,102 @@ namespace AnimAction
         }
     }
 
-    // Contexts live in per-region anim tables and can be freed on region
-    // unload; FindContext revalidates instead of the registry trying to
-    // track lifetimes. {0,0} ids are not registered (no identity to match).
-    static std::unordered_map<unsigned long long, void*> g_contextRegistry;
+    struct ContextNameEntry
+    {
+        char name[AnimActionFields::NAME_MAX];
+        int flag;
+    };
+
+    // ctxId -> anim name, learned at the resolver hook. Only names are kept
+    // — the contexts themselves are per-action transients.
+    static std::unordered_map<unsigned long long, ContextNameEntry> g_contextNames;
 
     static unsigned long long ContextKey(unsigned int id0, unsigned int id1)
     {
         return ((unsigned long long)id0 << 32) | id1;
     }
 
-    void RegisterContext(void* context, unsigned int id0, unsigned int id1)
+    // SEH portion of NoteResolvedContext (no unwindable locals allowed
+    // here). selectorKey is an anim-key: a pointer to the 4-byte name-node
+    // pointer; node+0 is the name chars.
+    static bool ReadResolvedInfo(void* context, void* selectorKey,
+        unsigned int* id0, unsigned int* id1, char* name, size_t nameSize)
     {
-        if (!context || (id0 == 0 && id1 == 0))
-            return;
+        __try
+        {
+            if (!IsReadable(context, 8) || !IsReadable(selectorKey, 4))
+                return false;
 
-        g_contextRegistry[ContextKey(id0, id1)] = context;
+            *id0 = ((const unsigned int*)context)[0];
+            *id1 = ((const unsigned int*)context)[1];
+            if (*id0 == 0 && *id1 == 0)
+                return false;
+
+            const char* node = *(const char* const*)selectorKey;
+            if (!IsReadable(node, 8))
+                return false;
+
+            return CopyPlausibleName(*(const char* const*)node, name, nameSize);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            return false;
+        }
     }
 
-    void* FindContext(unsigned int id0, unsigned int id1)
+    void NoteResolvedContext(void* context, void* selectorKey, int flag)
     {
-        if (id0 == 0 && id1 == 0)
+        unsigned int id0 = 0, id1 = 0;
+        char name[AnimActionFields::NAME_MAX] = "";
+
+        if (!ReadResolvedInfo(context, selectorKey, &id0, &id1, name, sizeof(name)))
+            return;
+
+        ContextNameEntry& entry = g_contextNames[ContextKey(id0, id1)];
+        strcpy_s(entry.name, name);
+        entry.flag = flag;
+    }
+
+    bool LookupContextName(unsigned int id0, unsigned int id1,
+        char* nameOut, size_t nameOutSize, int* flagOut)
+    {
+        auto it = g_contextNames.find(ContextKey(id0, id1));
+        if (it == g_contextNames.end())
+            return false;
+
+        strcpy_s(nameOut, nameOutSize, it->second.name);
+        if (flagOut)
+            *flagOut = it->second.flag;
+        return true;
+    }
+
+    static void* ResolveContextImpl(CThingPlayerCreature* creature, const char* name, int flag)
+    {
+        unsigned int animKey[2] = { 0, 0 };
+        ((void*(__thiscall*)(void*, const char*, int))FN_ANIM_KEY_CTOR)(
+            animKey, name, -1);
+
+        if (!animKey[0])
             return nullptr;
 
-        auto it = g_contextRegistry.find(ContextKey(id0, id1));
-        if (it == g_contextRegistry.end())
+        // Key node deliberately not released — same ownership caveat as in
+        // PlayImpl.
+        return ((void*(__thiscall*)(void*, void*, int))FN_RESOLVE_ANIM_CONTEXT)(
+            creature, animKey, flag);
+    }
+
+    void* ResolveContext(CThingPlayerCreature* creature, const char* name, int flag)
+    {
+        if (!creature || !name || !name[0])
             return nullptr;
 
-        void* context = it->second;
-        if (!IsReadable(context, 8)
-            || ((const unsigned int*)context)[0] != id0
-            || ((const unsigned int*)context)[1] != id1)
+        __try
         {
-            g_contextRegistry.erase(it);
+            return ResolveContextImpl(creature, name, flag);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
             return nullptr;
         }
-
-        return context;
     }
 }
