@@ -98,6 +98,54 @@ remote creature a weapon still needs an **object-from-def factory**
 (CThingObject creation; next RE target — trace CThingObject ctor callers
 or chest/spawner code).
 
+## Animation sync RE (2026-07-11, anim_scan.py / anim_disasm.py / anim_vfuncs.py)
+
+Goal: mirror the local hero's animations on remote puppets via the generic
+`CCreatureAction_PlayAnimation` (NPCs are driven by it constantly).
+
+**Animation identity = NAME.** Anim-name key ctor `0x99EBF0(this, name, idx)`
+has **25,448 call sites** — names ("ANIM_HERO_WILL_FIREBALL_ARMED_RELEASE",
+"ANIM_..." strings all over .rdata) are the game's own anim currency. The key
+is 8 bytes; dword0 = refcounted 0x11-byte node allocated by
+`0x99EA60(name, idx)` (node+0x0 = name ptr (probable, verify live), +0xD =
+dword refcount, global count @0x13BD800). Key dtor/release `0x99EAE0`.
+
+**PlayAnimation-family classes** (RTTI): PlayAnimation (vtable `0x1273A0C`),
+PlayAnimationFromIndex (`0x127507C`), PlayAnimationWithLookTurning,
+PlayIntoLoopOutOfAnimation (`0x1273B2C`), PlayConversationAnimation — all
+share base ctor `0x693B30` (7 args, ret 0x1C). PlayCombatAnimation
+(`0x127A604`) is DIFFERENT: shares the combat-action base ctor `0x858030`
+(same one the roll uses, mode 0x32) via ctors `0x8B7F80`/`0x8B7FF0`; its anim
+identity offset is unmapped (tracer raw-dumps it live).
+
+**Action layout** (base ctor 0x693B30 + full derived ctor):
+`+0x08` creature CIntelligentPointer, `+0x20/+0x24` caller dwords,
+`+0x34/+0x38` the 8-byte anim key (name handle + extra), `+0x4C/+0x50` = -1,
+`+0x74` optional context CThing* (via `0x693030`), `+0x90` heap string node,
+`+0xA8..+0xAB/+0xB0` flag bytes, `+0xAC` loop count.
+
+**Full ctor `0x8425E0`** (11 args, ret 0x2C, __thiscall on a ~0xB8 stack
+buffer): `(creature, context, bAA, bAB, loops, animKey*, bA8, bA9, bB0,
+d20, d24)`. Decoded from the repost vfunc `0x843B40` (slot 4), which
+re-posts a follow-up PlayAnimation from a finished one's fields and is a
+perfect replay template: ctor -> `DoCreatureAction 0x6644F0` -> dtor
+`0x693EF0`. Simpler ctors: `0x8424F0` (121 callers; resolves an extra arg
+via `0x6924B0` -> `0x662FA0(creature, x, 1)`), `0x842570` (12 callers,
+pre-resolved).
+
+Other landmarks: base slot 12 `0x694D10` = completion (restores creature
+modes 0x24/0x25/0x1F/0x23 via `0x70D8C0`); slot-4 base `0x694430` =
+interrupt/cleanup (auto-unsheathe etc.); `CTCShapeManager` vtable
+`0x126A2A4` (29 vfuncs, ctor refs 0x7620A1/0x76211E) — not needed for v1.
+
+Implemented (protocol v10): `Core/SDK/Fable/AnimAction` (Extract/Play),
+tracer v2 logs `[AnimAction]` lines w/ names + raw-dumps each family class
+once, `ID_PLAYER_ANIM` [netId][d20][d24][keyExtra][loops][5 flag bytes]
+[nameLen][name], NUMPAD9 = replay last capture on local hero (alternates
+context=null / captured). Open questions for the live session: does the
+HERO emit PlayAnimation-family actions for attacks (or only NPCs)? Which
+name-recovery interpretation wins? Are d20/d24 floats or pointers?
+
 ## Next steps
 
 1. ~~Locate the hero's TC components~~ → **probe built** (2026-07-10):

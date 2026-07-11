@@ -115,7 +115,8 @@ void NetMainGameComponent::Options()
     if (config.debugKeys)
     {
         std::cout << "[EgoMP] NUMPAD5/6/7: inspect hero / raw TC list / inventory TCs (debug)" << std::endl;
-        std::cout << "[EgoMP] NUMPAD8: log worn equipment; NUMPAD9: probe next equip-fn candidate (debug)" << std::endl;
+        std::cout << "[EgoMP] NUMPAD8: log worn equipment (debug)" << std::endl;
+        std::cout << "[EgoMP] NUMPAD9: replay last captured animation on the hero (debug)" << std::endl;
         std::cout << "[EgoMP] NUMPAD0: toggle live action/combat tracer (debug)" << std::endl;
     }
 }
@@ -143,9 +144,9 @@ void NetMainGameComponent::HandleDebugKeys()
     bool inspectTcList = (GetAsyncKeyState(VK_NUMPAD6) & 1) != 0;
     bool inspectInventories = (GetAsyncKeyState(VK_NUMPAD7) & 1) != 0;
     bool dumpEquipment = (GetAsyncKeyState(VK_NUMPAD8) & 1) != 0;
-    bool probeCandidate = (GetAsyncKeyState(VK_NUMPAD9) & 1) != 0;
+    bool replayAnim = (GetAsyncKeyState(VK_NUMPAD9) & 1) != 0;
 
-    if (!inspectCreature && !inspectTcList && !inspectInventories && !dumpEquipment && !probeCandidate)
+    if (!inspectCreature && !inspectTcList && !inspectInventories && !dumpEquipment && !replayAnim)
         return;
 
     CPlayerManager* playerManager = mainGameComponent->GetPlayerManager();
@@ -179,8 +180,32 @@ void NetMainGameComponent::HandleDebugKeys()
     if (dumpEquipment)
         EquipmentProbe::DumpEquipment(creature);
 
-    if (probeCandidate)
-        EquipmentProbe::ProbeNextCandidate(creature);
+    // Local end-to-end test of the animation-sync apply path, no LAN needed:
+    // with the tracer on (NUMPAD0), any nearby NPC's PlayAnimation gets
+    // captured; NUMPAD9 replays the newest capture on the local hero.
+    // Alternating presses test the two context hypotheses: without the
+    // captured +0x74 context thing (what a remote replay does) and with it.
+    if (replayAnim)
+    {
+        AnimActionFields fields;
+        if (!ActionTracer::GetLastAnimCapture(fields))
+        {
+            std::cout << "[EgoMP] Anim replay: nothing captured yet — turn the tracer on"
+                " (NUMPAD0) and stand near NPCs first" << std::endl;
+        }
+        else
+        {
+            static bool useContext = false;
+            void* context = useContext ? fields.localContext : nullptr;
+
+            bool ok = AnimAction::Play(creature, fields, context);
+            std::cout << "[EgoMP] Anim replay '" << fields.name << "' (loops=" << fields.loops
+                << ", context=" << (useContext ? "captured" : "null") << "): "
+                << (ok ? "posted" : "FAILED") << std::endl;
+
+            useContext = !useContext;
+        }
+    }
 }
 
 void NetMainGameComponent::Selection() {
@@ -274,7 +299,7 @@ void NetMainGameComponent::SetupNetworkCallbacks()
     ActionTracer::Install();
     ActionTracer::SetObserver([this](void* creature, void* action, const char* actionClass) {
         if (netPlayerManager)
-            netPlayerManager->HandleLocalCreatureAction(creature, actionClass);
+            netPlayerManager->HandleLocalCreatureAction(creature, action, actionClass);
     });
 
     network->AddConnectionNotificationCallback("ConnectionNotification", [this](int networkId, SystemAddress systemAddress) {
@@ -288,6 +313,31 @@ void NetMainGameComponent::SetupNetworkCallbacks()
         bs.Read(actionType);
         bs.Read(direction);
         netPlayerManager->ReceiveNetPlayerAction(networkId, actionType, direction);
+    });
+    network->AddNetPlayerAnimCallback("NetPlayerAnim", [this](BitStream& bs) {
+        int networkId = -1;
+        AnimActionFields fields;
+        unsigned char nameLen = 0;
+
+        bs.Read(networkId);
+        bs.Read(fields.d20);
+        bs.Read(fields.d24);
+        bs.Read(fields.keyExtra);
+        bs.Read(fields.loops);
+        bs.Read(fields.a8);
+        bs.Read(fields.a9);
+        bs.Read(fields.aa);
+        bs.Read(fields.ab);
+        bs.Read(fields.b0);
+        bs.Read(nameLen);
+
+        if (nameLen == 0 || nameLen >= AnimActionFields::NAME_MAX)
+            return;
+        if (!bs.ReadAlignedBytes((unsigned char*)fields.name, nameLen))
+            return;
+        fields.name[nameLen] = '\0';
+
+        netPlayerManager->ReceiveNetPlayerAnim(networkId, fields);
     });
     network->AddCreateLocalNetPlayerCallback("CreateLocalNetPlayer", [this](BitStream& bs) {
         int networkId = -1;
@@ -418,6 +468,7 @@ void NetMainGameComponent::ClearNetworkCallbacks()
 
     if (network) {
         network->RemoveNetPlayerActionCallback("NetPlayerAction");
+        network->RemoveNetPlayerAnimCallback("NetPlayerAnim");
         network->RemoveConnectionNotificationCallback("ConnectionNotification");
         network->RemoveDisconnectionNotificationCallback("DisconnectionNotification");
         network->RemoveConnectionLostCallback("ConnectionLost");

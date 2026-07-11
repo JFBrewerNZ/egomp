@@ -164,6 +164,7 @@
     <ClInclude Include="SDK\Fable\DefinitionManager.h" />
     <ClInclude Include="SDK\Fable\DefString.h" />
     <ClInclude Include="SDK\Fable\DefStringTable.h" />
+    <ClInclude Include="SDK\Fable\AnimAction.h" />
     <ClInclude Include="SDK\Fable\GameAction.h" />
     <ClInclude Include="SDK\Fable\HeroAppearanceModifiers.h" />
     <ClInclude Include="SDK\Fable\GameEvent.h" />
@@ -235,6 +236,7 @@
     <ClCompile Include="SDK\Fable\ThingPlayerCreature.cpp" />
     <ClCompile Include="SDK\Fable\ThingPlayerCreatureInit.cpp" />
     <ClCompile Include="SDK\Fable\Game.cpp" />
+    <ClCompile Include="SDK\Fable\AnimAction.cpp" />
     <ClCompile Include="SDK\Fable\HeroAppearanceModifiers.cpp" />
     <ClCompile Include="SDK\Fable\MainGameComponent.cpp" />
     <ClCompile Include="SDK\Fable\Player.cpp" />

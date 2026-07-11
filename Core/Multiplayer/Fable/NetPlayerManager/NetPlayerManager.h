@@ -3,6 +3,7 @@
 #include <sstream>
 
 #include "../../../SDK/Fable/SDK.h"
+#include "../../../SDK/Fable/AnimAction.h"
 #include "../../Network/Network.h"
 
 #include "../LocalNetPlayer/LocalNetPlayer.h"
@@ -27,8 +28,9 @@ public:
 
     // Fires (game thread) for every creature action. Broadcasts the local
     // hero's whitelisted combat actions so remote puppets mirror them.
-    void HandleLocalCreatureAction(void* creature, const char* actionClass);
+    void HandleLocalCreatureAction(void* creature, void* action, const char* actionClass);
     void ReceiveNetPlayerAction(int networkId, int actionType, C3DVector direction);
+    void ReceiveNetPlayerAnim(int networkId, const AnimActionFields& fields);
 
     // Called every frame: sustains held states (block) on remote puppets.
     void UpdateCombat();
@@ -67,6 +69,10 @@ private:
 
     void BroadcastLocalNetPlayerAppearance(const HeroMorphValues& morph, const HeroStatsExperience& exp, int meleeWeaponDef, int rangedWeaponDef, const std::vector<int>& modifierDefIndexes);
     void SendNetPlayerAppearancesTo(int networkId);
+
+    void SendLocalAnimAction(const AnimActionFields& fields);
+
+    unsigned long long lastAnimSendMs = 0;
 
     std::vector<int> lastSentAppearance;
     HeroMorphValues lastSentMorph;

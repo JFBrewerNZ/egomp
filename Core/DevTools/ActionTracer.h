@@ -2,12 +2,18 @@
 
 #include <functional>
 
+#include "../SDK/Fable/AnimAction.h"
+
 // Live combat/action tracer. Hooks CThingCreatureBase::DoCreatureAction
 // (0x6644F0) — the single entry point every creature action flows through
 // (wield, sheathe, attack, roll, block, cast, ...) — and logs each action's
 // RTTI class name plus the acting creature. Playing the game with this on
 // reveals the exact action classes and functions behind every combat move,
 // which is how weapon/combat sync is reverse-engineered without a debugger.
+//
+// PlayAnimation-family actions additionally get their fields extracted and
+// logged (anim name, loop count, flag bytes), and the most recent one is
+// kept for the NUMPAD9 local replay test.
 //
 // Enable via [general] debug_keys=1 in EgoMP.ini. Output goes to the console
 // and EgoMP-inspect.log.
@@ -29,4 +35,8 @@ namespace ActionTracer
     // debug logging is enabled.
     using ActionObserver = std::function<void(void* creature, void* action, const char* actionClass)>;
     void SetObserver(ActionObserver observer);
+
+    // Last PlayAnimation-family action captured while logging was enabled
+    // (from any creature, NPCs included). False if none captured yet.
+    bool GetLastAnimCapture(AnimActionFields& out);
 }

@@ -10,6 +10,29 @@
 static const unsigned long long BLOCK_HOLD_WINDOW_MS = 400;
 static const unsigned long long BLOCK_REPOST_INTERVAL_MS = 250;
 
+// Floor between two anim broadcasts, in case the hero turns out to emit
+// PlayAnimation actions every frame (e.g. for locomotion).
+static const unsigned long long ANIM_SEND_MIN_INTERVAL_MS = 50;
+
+// [netId is written by the caller] — serializes the wire fields of
+// ID_PLAYER_ANIM after it.
+static void WriteAnimFields(SLNet::BitStream& bs, const AnimActionFields& fields)
+{
+    bs.Write(fields.d20);
+    bs.Write(fields.d24);
+    bs.Write(fields.keyExtra);
+    bs.Write(fields.loops);
+    bs.Write(fields.a8);
+    bs.Write(fields.a9);
+    bs.Write(fields.aa);
+    bs.Write(fields.ab);
+    bs.Write(fields.b0);
+
+    unsigned char nameLen = (unsigned char)std::strlen(fields.name);
+    bs.Write(nameLen);
+    bs.WriteAlignedBytes((const unsigned char*)fields.name, nameLen);
+}
+
 // Maps an action's demangled RTTI class to a synced CombatActionType, or
 // -1 if the action is not replicated. Kept deliberately small — each entry
 // is a move confirmed to reconstruct cleanly on a puppet.
@@ -23,7 +46,7 @@ static int CombatActionTypeForClass(const char* actionClass)
     return -1;
 }
 
-void NetPlayerManager::HandleLocalCreatureAction(void* creature, const char* actionClass)
+void NetPlayerManager::HandleLocalCreatureAction(void* creature, void* action, const char* actionClass)
 {
     // Only the local hero's own actions are broadcast. Puppet actions (which
     // include the ones we reconstruct from the network) are ignored here, so
@@ -34,6 +57,16 @@ void NetPlayerManager::HandleLocalCreatureAction(void* creature, const char* act
     CThingPlayerCreature* localHero = GetCreatureFromLocalId(localNetPlayer->GetLocalId());
     if (!localHero || creature != localHero)
         return;
+
+    // PlayAnimation-family actions are mirrored by animation name — the
+    // catch-all that shows combat/gesture motion without reconstructing
+    // each action's machine-specific arguments.
+    if (AnimAction::ClassHasAnimLayout(actionClass))
+    {
+        AnimActionFields fields;
+        if (AnimAction::Extract(action, fields))
+            SendLocalAnimAction(fields);
+    }
 
     int actionType = CombatActionTypeForClass(actionClass);
     if (actionType < 0)
@@ -103,6 +136,48 @@ void NetPlayerManager::ReceiveNetPlayerAction(int networkId, int actionType, C3D
         return;
 
     CombatActions::Perform(creature, (CombatActionType)actionType, direction);
+}
+
+void NetPlayerManager::SendLocalAnimAction(const AnimActionFields& fields)
+{
+    unsigned long long now = GetTickCount64();
+    if (now - lastAnimSendMs < ANIM_SEND_MIN_INTERVAL_MS)
+        return;
+    lastAnimSendMs = now;
+
+    int networkId = localNetPlayer->GetNetworkId();
+
+    SLNet::BitStream bs;
+    bs.Write((SLNet::MessageID)ID_PLAYER_ANIM);
+    bs.Write(networkId);
+    WriteAnimFields(bs, fields);
+
+    if (networkId == 0)
+        network->SendToAllClients((const char*)bs.GetData(), bs.GetNumberOfBytesUsed(), HIGH_PRIORITY, UNRELIABLE);
+    else
+        network->SendToHost((const char*)bs.GetData(), bs.GetNumberOfBytesUsed(), HIGH_PRIORITY, UNRELIABLE);
+}
+
+void NetPlayerManager::ReceiveNetPlayerAnim(int networkId, const AnimActionFields& fields)
+{
+    // Host relays to the other clients.
+    if (localNetPlayer && localNetPlayer->GetNetworkId() == 0)
+    {
+        SLNet::BitStream bs;
+        bs.Write((SLNet::MessageID)ID_PLAYER_ANIM);
+        bs.Write(networkId);
+        WriteAnimFields(bs, fields);
+
+        network->SendToAllClientsExcept(networkId, (const char*)bs.GetData(), bs.GetNumberOfBytesUsed(), HIGH_PRIORITY, UNRELIABLE);
+    }
+
+    CThingPlayerCreature* creature = GetCreatureFromNetworkId(networkId);
+    if (!creature)
+        return;
+
+    // The sender's context pointer is meaningless on this machine; the
+    // puppet plays the animation context-free.
+    AnimAction::Play(creature, fields, nullptr);
 }
 
 void NetPlayerManager::UpdateCombat()

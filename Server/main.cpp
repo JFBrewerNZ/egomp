@@ -121,6 +121,10 @@ private:
                 HandlePlayerAction(packet);
                 break;
 
+            case ID_PLAYER_ANIM:
+                HandlePlayerAnim(packet);
+                break;
+
             case ID_DISCONNECTION_NOTIFICATION:
             case ID_CONNECTION_LOST:
                 HandleDisconnect(packet);
@@ -394,6 +398,23 @@ private:
         int actionType = -1;
         in.Read(networkId);
         in.Read(actionType);
+
+        int senderId = GetNetworkIdFromAddress(packet->systemAddress);
+        if (senderId == -1 || senderId != networkId)
+            return;
+
+        SendToAnnouncedExcept(senderId, packet, HIGH_PRIORITY, UNRELIABLE);
+    }
+
+    // Animation mirror: validated then relayed verbatim (the payload is
+    // opaque to the server).
+    void HandlePlayerAnim(Packet* packet)
+    {
+        BitStream in(packet->data, packet->length, false);
+        in.IgnoreBytes(sizeof(MessageID));
+
+        int networkId = -1;
+        in.Read(networkId);
 
         int senderId = GetNetworkIdFromAddress(packet->systemAddress);
         if (senderId == -1 || senderId != networkId)

@@ -53,6 +53,10 @@ void Network::Update()
 			HandleNetPlayerAction(packet);
 			break;
 
+		case ID_PLAYER_ANIM:
+			HandleNetPlayerAnim(packet);
+			break;
+
 		case ID_DISCONNECTION_NOTIFICATION:
 			HandleDisconnectionNotification(packet);
 			break;
@@ -253,6 +257,21 @@ void Network::HandleNetPlayerAction(SLNet::Packet* packet)
 	SLNet::BitStream bs(packet->data, packet->length, false);
 
 	for (const auto& pair : netPlayerActionCallbacks)
+	{
+		if (pair.second)
+		{
+			bs.ResetReadPointer();
+			bs.IgnoreBytes(sizeof(SLNet::MessageID));
+			pair.second(bs);
+		}
+	}
+}
+
+void Network::HandleNetPlayerAnim(SLNet::Packet* packet)
+{
+	SLNet::BitStream bs(packet->data, packet->length, false);
+
+	for (const auto& pair : netPlayerAnimCallbacks)
 	{
 		if (pair.second)
 		{

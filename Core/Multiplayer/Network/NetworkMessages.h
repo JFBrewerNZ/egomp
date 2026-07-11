@@ -4,7 +4,7 @@
 
 // Bumped whenever a payload changes shape; mismatching peers are rejected
 // at ID_CONNECTION_NOTIFICATION.
-const int EGOMP_PROTOCOL_VERSION = 9;
+const int EGOMP_PROTOCOL_VERSION = 10;
 
 // Every payload is prefixed with its [uint8 messageId].
 // "host" below means the session authority: either a hosting player (P2P)
@@ -64,5 +64,14 @@ enum NetworkMessages
     // directional moves like the roll). Reconstructed on each remote puppet
     // so it mirrors the move. Sent unreliably — a dropped action is simply
     // not mirrored.
-    ID_PLAYER_ACTION
+    ID_PLAYER_ACTION,
+
+    // sender -> host -> other clients:
+    // [int networkId][uint32 d20][uint32 d24][uint32 keyExtra][int loops]
+    // [5 x uint8 flag bytes a8 a9 aa ab b0][uint8 nameLen][nameLen chars]
+    // A PlayAnimation-family action the sender's hero performed, identified
+    // by animation NAME (the game's own currency — every anim key is built
+    // from a name via 0x99EBF0). Replayed on the puppet with a
+    // stack-constructed CCreatureAction_PlayAnimation. Unreliable.
+    ID_PLAYER_ANIM
 };
