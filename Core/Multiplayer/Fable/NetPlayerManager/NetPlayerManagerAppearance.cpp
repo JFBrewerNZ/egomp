@@ -180,27 +180,16 @@ void NetPlayerManager::ApplyNetPlayerAppearance(NetPlayer& netPlayer)
 
 void NetPlayerManager::ApplyNetPlayerWeapons(NetPlayer& netPlayer)
 {
-    // Give the puppet its carried weapons once per distinct def — a
-    // freshly-spawned (weaponless) hero auto-equips its first weapon onto
-    // the back. Re-giving would drop duplicate swords, so track what was
-    // applied.
-    int melee = netPlayer.GetMeleeWeaponDef();
-    int ranged = netPlayer.GetRangedWeaponDef();
-
-    if (melee == netPlayer.GetAppliedMeleeWeaponDef()
-        && ranged == netPlayer.GetAppliedRangedWeaponDef())
-        return;
-
-    CThingPlayerCreature* creature = GetCreatureFromNetworkId(netPlayer.GetNetworkId());
-    if (!creature)
-        return;
-
-    if (melee >= 0 && melee != netPlayer.GetAppliedMeleeWeaponDef())
-        CTCInventoryWeapons::GiveWeapon(creature, melee);
-    if (ranged >= 0 && ranged != netPlayer.GetAppliedRangedWeaponDef())
-        CTCInventoryWeapons::GiveWeapon(creature, ranged);
-
-    netPlayer.SetAppliedWeaponDefs(melee, ranged);
+    // Weapon def indexes are received and stored (read/sync verified over
+    // LAN), but applying them is disabled: the AddRealObjectToInventory
+    // path fires the acquire popup on the observer's HUD and leaves the
+    // weapon in the puppet's inventory rather than on its back, and the
+    // direct back-attach (0x5C36C2) faults on freshly-created objects that
+    // lack the equipped-weapon wiring. A correct silent equip-by-def
+    // primitive still needs to be found (likely a live-debugger trace of
+    // the inventory "wield" path). Until then this is a no-op so joining a
+    // session does not spam weapon popups.
+    (void)netPlayer;
 }
 
 void NetPlayerManager::SendNetPlayerAppearancesTo(int networkId)
