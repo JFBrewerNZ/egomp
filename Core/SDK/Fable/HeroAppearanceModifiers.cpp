@@ -1,6 +1,7 @@
 #include "HeroAppearanceModifiers.h"
 
 #include <windows.h>
+#include <MinHook/include/MinHook.h>
 
 #include "Thing.h"
 #include "3DVector.h"
@@ -17,9 +18,12 @@ namespace
     const int TC_ID_HERO_STATS = 0x04;
     const int TC_ID_INVENTORY_WEAPONS = 0x13;
 
-    // Carried-weapon def-holders (CIntelligentPointer) + accessors.
+    // Carried-weapon def-holders (CIntelligentPointer) + accessors. The
+    // ranged holder sits at the UNALIGNED +0x141 — both RestoreCarried-
+    // Weapons (0x5C8101) and the wield reconciler (0x5CA68E, `add edi,
+    // 0x141`) read it there; the earlier +0x148 guess read garbage.
     const size_t WEAPON_MELEE_HOLDER_OFFSET = 0x134;
-    const size_t WEAPON_RANGED_HOLDER_OFFSET = 0x148;
+    const size_t WEAPON_RANGED_HOLDER_OFFSET = 0x141;
     const uintptr_t FN_INTELLIGENT_POINTER_GET = 0xA01B50;
     const uintptr_t FN_INTELLIGENT_POINTER_SET = 0xA01B90;
 
@@ -314,6 +318,54 @@ int CTCInventoryWeapons::GetInventoryWeaponGate(int defGlobalIndex)
     {
         return -999;
     }
+}
+
+namespace
+{
+    // Gate-bypass hook: while g_gateBypass is set, the inventory gate
+    // (0x5BDF08) reports ownership for any def, letting the game's own
+    // CreateCarriedWeapon run for inventory-less puppet creatures.
+    volatile bool g_gateBypass = false;
+    int(__fastcall* OInventoryGate)(void* weaponsTC, void* edx, int defIndex) = nullptr;
+
+    int __fastcall HInventoryGate(void* weaponsTC, void* edx, int defIndex)
+    {
+        int result = OInventoryGate(weaponsTC, edx, defIndex);
+        if (g_gateBypass && result <= 0)
+            result = 1;
+        return result;
+    }
+
+    bool EnsureGateHook()
+    {
+        static bool attempted = false;
+        static bool installed = false;
+
+        if (!attempted)
+        {
+            attempted = true;
+            installed = MH_CreateHook(reinterpret_cast<void*>(FN_INVENTORY_WEAPON_GATE),
+                    reinterpret_cast<void*>(&HInventoryGate),
+                    reinterpret_cast<void**>(&OInventoryGate)) == MH_OK
+                && MH_EnableHook(reinterpret_cast<void*>(FN_INVENTORY_WEAPON_GATE)) == MH_OK;
+        }
+
+        return installed;
+    }
+}
+
+CThing* CTCInventoryWeapons::CreateCarriedWeaponUnchecked(int defGlobalIndex, unsigned long* exceptionCode)
+{
+    if (exceptionCode)
+        *exceptionCode = 0;
+    if (!EnsureGateHook())
+        return nullptr;
+
+    g_gateBypass = true;
+    CThing* weapon = CreateCarriedWeapon(defGlobalIndex, exceptionCode);
+    g_gateBypass = false;
+
+    return weapon;
 }
 
 CThing* CTCInventoryWeapons::CreateCarriedWeapon(int defGlobalIndex, unsigned long* exceptionCode)

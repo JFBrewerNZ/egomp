@@ -140,7 +140,15 @@ public:
     // data onto the new weapon's components — the wiring hand-made factory
     // objects lacked. Returns the carried-ready weapon, or nullptr.
     // SEH-guarded; exceptionCode (optional) reports a fault.
+    // VERIFIED on the hero 2026-07-11: visible stick/katana back-model
+    // swaps, no faults.
     CThing* CreateCarriedWeapon(int defGlobalIndex, unsigned long* exceptionCode = nullptr);
+
+    // Same, but forces the inventory gate open for the duration of the
+    // call (hooks 0x5BDF08 on first use) — for creatures WITHOUT inventory
+    // records, i.e. remote puppets. The no-record path inside merely skips
+    // the augmentation copies and still returns a wired weapon.
+    CThing* CreateCarriedWeaponUnchecked(int defGlobalIndex, unsigned long* exceptionCode = nullptr);
 
     // Writes the carried-weapon holder (CIntelligentPointer::Assign,
     // 0xA01B90). Pass nullptr to clear. Call RegenerateCarriedWeapons

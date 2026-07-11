@@ -145,6 +145,10 @@ void NetPlayerManager::ApplyNetPlayerAppearance(NetPlayer& netPlayer)
             stats->SetExperienceSpentOn(netPlayer.GetStatsExperience());
     }
 
+    // Weapons before the modifier early-returns: a weapons-only change must
+    // still apply when the clothing set is unchanged.
+    ApplyNetPlayerWeapons(netPlayer);
+
     const std::vector<int>& wanted = netPlayer.GetAppearance();
 
     if (wanted.empty())
@@ -174,22 +178,63 @@ void NetPlayerManager::ApplyNetPlayerAppearance(NetPlayer& netPlayer)
     for (int defIndex : wanted)
         appearance->AddModifier(defIndex);
     appearance->RebuildAttachments();
-
-    ApplyNetPlayerWeapons(netPlayer);
 }
 
 void NetPlayerManager::ApplyNetPlayerWeapons(NetPlayer& netPlayer)
 {
-    // Weapon def indexes are received and stored (read/sync verified over
-    // LAN), but applying them is disabled: the AddRealObjectToInventory
-    // path fires the acquire popup on the observer's HUD and leaves the
-    // weapon in the puppet's inventory rather than on its back, and the
-    // direct back-attach (0x5C36C2) faults on freshly-created objects that
-    // lack the equipped-weapon wiring. A correct silent equip-by-def
-    // primitive still needs to be found (likely a live-debugger trace of
-    // the inventory "wield" path). Until then this is a no-op so joining a
-    // session does not spam weapon popups.
-    (void)netPlayer;
+    // The game's own equip path, hero-verified 2026-07-11: create a wired
+    // carried weapon from the def (inventory gate forced open — puppets
+    // have no inventory records; that path just skips the augmentation
+    // copies), holster it, regenerate the back visuals. Silent — no
+    // popups, no pickups.
+    if (!netPlayer.IsSpawned())
+        return;
+
+    int melee = netPlayer.GetMeleeWeaponDef();
+    int ranged = netPlayer.GetRangedWeaponDef();
+
+    if (melee == netPlayer.GetAppliedMeleeWeaponDef()
+        && ranged == netPlayer.GetAppliedRangedWeaponDef())
+        return;
+
+    CThingPlayerCreature* creature = GetCreatureFromNetworkId(netPlayer.GetNetworkId());
+    if (!creature)
+        return;
+
+    CTCInventoryWeapons* weapons = CTCInventoryWeapons::FromCreature(creature);
+    if (!weapons)
+        return;
+
+    bool changed = false;
+
+    if (melee > 0 && melee != netPlayer.GetAppliedMeleeWeaponDef())
+    {
+        if (CThing* weapon = weapons->CreateCarriedWeaponUnchecked(melee))
+        {
+            weapons->SetCarriedMeleeWeapon(weapon);
+            changed = true;
+        }
+    }
+
+    if (ranged > 0 && ranged != netPlayer.GetAppliedRangedWeaponDef())
+    {
+        if (CThing* weapon = weapons->CreateCarriedWeaponUnchecked(ranged))
+        {
+            weapons->SetCarriedRangedWeapon(weapon);
+            changed = true;
+        }
+    }
+
+    if (changed)
+        weapons->RegenerateCarriedWeapons();
+
+    // Marked applied even on failure so change-driven re-broadcasts don't
+    // recreate weapon objects endlessly; a respawn resets and retries.
+    netPlayer.SetAppliedWeaponDefs(melee, ranged);
+
+    std::cout << "[NetPlayerManager] Player " << netPlayer.GetNetworkId()
+        << " weapons applied (melee def " << melee << ", ranged def " << ranged
+        << (changed ? ")" : ", no visual change)") << std::endl;
 }
 
 void NetPlayerManager::SendNetPlayerAppearancesTo(int networkId)
