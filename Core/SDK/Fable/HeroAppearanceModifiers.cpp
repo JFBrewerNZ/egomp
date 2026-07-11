@@ -367,24 +367,43 @@ namespace
     }
 }
 
-CThing* CTCInventoryWeapons::CreateCarriedWeaponUnchecked(int defGlobalIndex, unsigned long* exceptionCode)
+namespace
+{
+    int CaptureFault(EXCEPTION_POINTERS* pointers,
+        unsigned long* exceptionCode, void** faultAddress)
+    {
+        if (exceptionCode)
+            *exceptionCode = pointers->ExceptionRecord->ExceptionCode;
+        if (faultAddress)
+            *faultAddress = pointers->ExceptionRecord->ExceptionAddress;
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
+}
+
+CThing* CTCInventoryWeapons::CreateCarriedWeaponUnchecked(int defGlobalIndex,
+    unsigned long* exceptionCode, void** faultAddress)
 {
     if (exceptionCode)
         *exceptionCode = 0;
+    if (faultAddress)
+        *faultAddress = nullptr;
     if (!EnsureGateHook())
         return nullptr;
 
     g_gateBypass = true;
-    CThing* weapon = CreateCarriedWeapon(defGlobalIndex, exceptionCode);
+    CThing* weapon = CreateCarriedWeapon(defGlobalIndex, exceptionCode, faultAddress);
     g_gateBypass = false;
 
     return weapon;
 }
 
-CThing* CTCInventoryWeapons::CreateCarriedWeapon(int defGlobalIndex, unsigned long* exceptionCode)
+CThing* CTCInventoryWeapons::CreateCarriedWeapon(int defGlobalIndex,
+    unsigned long* exceptionCode, void** faultAddress)
 {
     if (exceptionCode)
         *exceptionCode = 0;
+    if (faultAddress)
+        *faultAddress = nullptr;
     if (defGlobalIndex <= 0)
         return nullptr;
 
@@ -393,8 +412,7 @@ CThing* CTCInventoryWeapons::CreateCarriedWeapon(int defGlobalIndex, unsigned lo
         return ((CThing*(__thiscall*)(void*, int))FN_CREATE_CARRIED_WEAPON)(
             this, defGlobalIndex);
     }
-    __except (exceptionCode ? (*exceptionCode = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
-        : EXCEPTION_EXECUTE_HANDLER)
+    __except (CaptureFault(GetExceptionInformation(), exceptionCode, faultAddress))
     {
         return nullptr;
     }

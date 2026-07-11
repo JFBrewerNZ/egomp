@@ -707,5 +707,34 @@ namespace EquipmentProbe
             (void*)fresh, ok ? "OK" : "FAULTED", equipException,
             ok ? "" : (restored ? ", original restored" : ", RESTORE FAILED"));
         ObjectInspector::LogLine(buf);
+
+        // Local reproduction of the puppet RANGED-create fault: gate-
+        // bypassed creation of ranged defs, preferably one NOT in the
+        // inventory (that is the puppet situation). The captured fault
+        // address pins the failing read; the created/leaked object is NOT
+        // holstered.
+        CCharString bowName("OBJECT_EBONY_LONGBOW");
+        int rangedCandidates[2] = {
+            CDefinitionManager::Get()->GetDefGlobalIndexFromName(&bowName),
+            5530,
+        };
+
+        for (int i = 0; i < 2; i++)
+        {
+            int def = rangedCandidates[i];
+            if (def <= 0)
+                continue;
+
+            int gate = weapons->GetInventoryWeaponGate(def);
+            unsigned long exc = 0;
+            void* faultAddr = nullptr;
+            CThing* created = weapons->CreateCarriedWeaponUnchecked(def, &exc, &faultAddr);
+
+            sprintf_s(buf, "[Equip] ranged repro: def %d gate %d -> %s"
+                " (exc %08lX @%p)%s",
+                def, gate, created ? "created" : "FAILED", exc, faultAddr,
+                created ? " (probe object left un-holstered)" : "");
+            ObjectInspector::LogLine(buf);
+        }
     }
 }

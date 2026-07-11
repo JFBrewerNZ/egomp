@@ -142,13 +142,19 @@ public:
     // SEH-guarded; exceptionCode (optional) reports a fault.
     // VERIFIED on the hero 2026-07-11: visible stick/katana back-model
     // swaps, no faults.
-    CThing* CreateCarriedWeapon(int defGlobalIndex, unsigned long* exceptionCode = nullptr);
+    // faultAddress (optional) receives the faulting instruction pointer on
+    // an exception — C0000005s inside this function were seen on LAN
+    // puppets (ranged defs reliably, melee during spawn settling) and the
+    // address pins the exact failing read.
+    CThing* CreateCarriedWeapon(int defGlobalIndex, unsigned long* exceptionCode = nullptr,
+        void** faultAddress = nullptr);
 
     // Same, but forces the inventory gate open for the duration of the
     // call (hooks 0x5BDF08 on first use) — for creatures WITHOUT inventory
     // records, i.e. remote puppets. The no-record path inside merely skips
     // the augmentation copies and still returns a wired weapon.
-    CThing* CreateCarriedWeaponUnchecked(int defGlobalIndex, unsigned long* exceptionCode = nullptr);
+    CThing* CreateCarriedWeaponUnchecked(int defGlobalIndex, unsigned long* exceptionCode = nullptr,
+        void** faultAddress = nullptr);
 
     // Writes the carried-weapon holder (CIntelligentPointer::Assign,
     // 0xA01B90). Pass nullptr to clear. Call RegenerateCarriedWeapons

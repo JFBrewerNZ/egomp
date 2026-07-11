@@ -38,8 +38,12 @@ private:
     unsigned long long lastBlockPostMs = 0;
 
     // Throttles the periodic weapon-apply retry for slots whose creation
-    // failed (their applied def stays stale until a retry succeeds).
+    // failed (their applied def stays stale until a retry succeeds), and
+    // caps the attempts: every faulted create leaks a half-built weapon
+    // object into the world (LAN test: a crossbow pile at the puppet's
+    // feet), so retries must not run forever.
     unsigned long long lastWeaponRetryMs = 0;
+    int weaponApplyAttempts = 0;
 
 public:
     NetPlayer();
@@ -78,7 +82,13 @@ public:
     void SetStatsExperience(const HeroStatsExperience& values) { statsExperience = values; }
     const HeroStatsExperience& GetStatsExperience() const { return statsExperience; }
 
-    void SetWeaponDefs(int melee, int ranged) { meleeWeaponDef = melee; rangedWeaponDef = ranged; }
+    void SetWeaponDefs(int melee, int ranged)
+    {
+        if (melee != meleeWeaponDef || ranged != rangedWeaponDef)
+            weaponApplyAttempts = 0; // new defs get a fresh attempt budget
+        meleeWeaponDef = melee;
+        rangedWeaponDef = ranged;
+    }
     int GetMeleeWeaponDef() const { return meleeWeaponDef; }
     int GetRangedWeaponDef() const { return rangedWeaponDef; }
 
@@ -93,4 +103,7 @@ public:
 
     unsigned long long GetLastWeaponRetryMs() const { return lastWeaponRetryMs; }
     void SetLastWeaponRetryMs(unsigned long long ms) { lastWeaponRetryMs = ms; }
+
+    int GetWeaponApplyAttempts() const { return weaponApplyAttempts; }
+    void BumpWeaponApplyAttempts() { weaponApplyAttempts++; }
 };

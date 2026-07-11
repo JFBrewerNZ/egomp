@@ -232,44 +232,54 @@ void NetPlayerManager::ApplyNetPlayerWeapons(NetPlayer& netPlayer)
     if (!weapons)
         return;
 
+    // Settle delay: creating during puppet spawn-settling faulted on LAN
+    // (the laptop's creates failed until the region was re-entered). The
+    // first call only arms the retry timer; UpdateCombat runs the real
+    // attempt a few seconds later.
+    if (netPlayer.GetLastWeaponRetryMs() == 0)
+    {
+        netPlayer.SetLastWeaponRetryMs(GetTickCount64());
+        return;
+    }
+
+    // Attempt cap: every faulted create leaks a half-built weapon into the
+    // world (the crossbow pile at the puppet's feet).
+    if (netPlayer.GetWeaponApplyAttempts() >= 4)
+        return;
+    netPlayer.BumpWeaponApplyAttempts();
+
     // Keep the game's own regenerations (sheathe/unsheathe reconciler) on
     // the build path for this puppet from now on.
     bool flagSet = CTCInventoryWeapons::SetCarriedWeaponsVisibleFlag(creature);
 
     CThing* meleeWeapon = nullptr;
-    CThing* rangedWeapon = nullptr;
     unsigned long meleeException = 0;
-    unsigned long rangedException = 0;
+    void* meleeFaultAddress = nullptr;
 
     bool meleeWanted = melee > 0 && melee != netPlayer.GetAppliedMeleeWeaponDef();
-    bool rangedWanted = ranged > 0 && ranged != netPlayer.GetAppliedRangedWeaponDef();
 
     if (meleeWanted)
-        meleeWeapon = weapons->CreateCarriedWeaponUnchecked(melee, &meleeException);
-
-    if (rangedWanted)
-        rangedWeapon = weapons->CreateCarriedWeaponUnchecked(ranged, &rangedException);
+        meleeWeapon = weapons->CreateCarriedWeaponUnchecked(melee, &meleeException, &meleeFaultAddress);
 
     unsigned long restoreException = 0;
-    bool ok = (meleeWeapon || rangedWeapon)
-        && GuardedHolsterAndRestore(weapons, meleeWeapon, rangedWeapon, &restoreException);
+    bool ok = meleeWeapon
+        && GuardedHolsterAndRestore(weapons, meleeWeapon, nullptr, &restoreException);
 
-    // Per-slot tracking: a slot whose create failed stays unapplied so the
-    // periodic retry (UpdateCombat) attempts it again; a created weapon is
-    // marked even if the visual build failed (its object exists — retrying
-    // would leak more).
+    // RANGED APPLY DISABLED: crossbow/bow creation faults reliably on
+    // puppets (C0000005 mid-function, leaking the world drop) and a
+    // half-built ranged weapon crashed the receiving game. Re-enable once
+    // the fault address (NUMPAD8 reproduces it locally) is diagnosed.
     int newAppliedMelee = (meleeWeapon || !meleeWanted) ? melee : netPlayer.GetAppliedMeleeWeaponDef();
-    int newAppliedRanged = (rangedWeapon || !rangedWanted) ? ranged : netPlayer.GetAppliedRangedWeaponDef();
-    netPlayer.SetAppliedWeaponDefs(newAppliedMelee, newAppliedRanged);
+    netPlayer.SetAppliedWeaponDefs(newAppliedMelee, ranged);
 
     char line[320];
-    sprintf_s(line, "[NetPlayerManager] Player %d weapons: melee %d (%s%s%08lX),"
-        " ranged %d (%s%s%08lX), heroFlag %s, visuals %s (exc %08lX)",
+    sprintf_s(line, "[NetPlayerManager] Player %d weapons: melee %d (%s exc %08lX @%p),"
+        " ranged %d (disabled), heroFlag %s, visuals %s (exc %08lX), attempt %d",
         netPlayer.GetNetworkId(),
-        melee, meleeWeapon ? "created" : "-", meleeException ? " exc " : " ", meleeException,
-        ranged, rangedWeapon ? "created" : "-", rangedException ? " exc " : " ", rangedException,
-        flagSet ? "set" : "MISSING",
-        ok ? "restored" : "skipped/FAILED", restoreException);
+        melee, meleeWeapon ? "created" : "-", meleeException, meleeFaultAddress,
+        ranged, flagSet ? "set" : "MISSING",
+        ok ? "restored" : "skipped/FAILED", restoreException,
+        netPlayer.GetWeaponApplyAttempts());
     std::cout << line << std::endl;
 }
 
