@@ -253,31 +253,36 @@ void NetPlayerManager::ApplyNetPlayerWeapons(NetPlayer& netPlayer)
     bool flagSet = CTCInventoryWeapons::SetCarriedWeaponsVisibleFlag(creature);
 
     CThing* meleeWeapon = nullptr;
+    CThing* rangedWeapon = nullptr;
     unsigned long meleeException = 0;
+    unsigned long rangedException = 0;
     void* meleeFaultAddress = nullptr;
+    void* rangedFaultAddress = nullptr;
 
     bool meleeWanted = melee > 0 && melee != netPlayer.GetAppliedMeleeWeaponDef();
+    bool rangedWanted = ranged > 0 && ranged != netPlayer.GetAppliedRangedWeaponDef();
 
     if (meleeWanted)
         meleeWeapon = weapons->CreateCarriedWeaponUnchecked(melee, &meleeException, &meleeFaultAddress);
 
+    if (rangedWanted)
+        rangedWeapon = weapons->CreateCarriedWeaponUnchecked(ranged, &rangedException, &rangedFaultAddress);
+
     unsigned long restoreException = 0;
-    bool ok = meleeWeapon
-        && GuardedHolsterAndRestore(weapons, meleeWeapon, nullptr, &restoreException);
+    bool ok = (meleeWeapon || rangedWeapon)
+        && GuardedHolsterAndRestore(weapons, meleeWeapon, rangedWeapon, &restoreException);
 
-    // RANGED APPLY DISABLED: crossbow/bow creation faults reliably on
-    // puppets (C0000005 mid-function, leaking the world drop) and a
-    // half-built ranged weapon crashed the receiving game. Re-enable once
-    // the fault address (NUMPAD8 reproduces it locally) is diagnosed.
     int newAppliedMelee = (meleeWeapon || !meleeWanted) ? melee : netPlayer.GetAppliedMeleeWeaponDef();
-    netPlayer.SetAppliedWeaponDefs(newAppliedMelee, ranged);
+    int newAppliedRanged = (rangedWeapon || !rangedWanted) ? ranged : netPlayer.GetAppliedRangedWeaponDef();
+    netPlayer.SetAppliedWeaponDefs(newAppliedMelee, newAppliedRanged);
 
-    char line[320];
+    char line[360];
     sprintf_s(line, "[NetPlayerManager] Player %d weapons: melee %d (%s exc %08lX @%p),"
-        " ranged %d (disabled), heroFlag %s, visuals %s (exc %08lX), attempt %d",
+        " ranged %d (%s exc %08lX @%p), heroFlag %s, visuals %s (exc %08lX), attempt %d",
         netPlayer.GetNetworkId(),
         melee, meleeWeapon ? "created" : "-", meleeException, meleeFaultAddress,
-        ranged, flagSet ? "set" : "MISSING",
+        ranged, rangedWeapon ? "created" : "-", rangedException, rangedFaultAddress,
+        flagSet ? "set" : "MISSING",
         ok ? "restored" : "skipped/FAILED", restoreException,
         netPlayer.GetWeaponApplyAttempts());
     std::cout << line << std::endl;

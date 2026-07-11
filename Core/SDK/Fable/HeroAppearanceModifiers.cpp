@@ -1,5 +1,6 @@
 #include "HeroAppearanceModifiers.h"
 
+#include <cstring>
 #include <windows.h>
 #include <MinHook/include/MinHook.h>
 
@@ -43,6 +44,14 @@ namespace
     const uintptr_t FN_RESTORE_CARRIED_WEAPONS = 0x5C8101;
     const int TC_ID_HERO = 0x29;
     const size_t HERO_TC_WEAPONS_VISIBLE_OFFSET = 0xC;
+
+    // The inventory-record lookup inside CreateCarriedWeapon. On an EMPTY
+    // record container (puppets) it returns a non-null end-sentinel, and
+    // the augmentation copies then read through garbage — the fault at
+    // 0x5BE9A5 (`mov edx,[record+0xC]`) when the garbage is unmapped, or
+    // worse, silent garbage copies into the weapon's combat data when it
+    // is readable (crashed the observer when that weapon was unsheathed).
+    const uintptr_t FN_INVENTORY_RECORD_LOOKUP = 0x5BE8D3;
 
     // Object factory + pickup action (see RE-NOTES.md / EquipmentProbe).
     const uintptr_t FN_THING_OBJECT_CREATE = 0x703210;
@@ -335,11 +344,16 @@ int CTCInventoryWeapons::GetInventoryWeaponGate(int defGlobalIndex)
 
 namespace
 {
-    // Gate-bypass hook: while g_gateBypass is set, the inventory gate
-    // (0x5BDF08) reports ownership for any def, letting the game's own
-    // CreateCarriedWeapon run for inventory-less puppet creatures.
+    // Bypass hooks: while g_gateBypass is set, the inventory gate
+    // (0x5BDF08) reports ownership for any def, and the record lookup
+    // (0x5BE8D3) returns a ZEROED dummy record — inventory-less puppets
+    // would otherwise get a garbage end-sentinel whose augmentation
+    // "copies" fault or poison the weapon's combat data.
     volatile bool g_gateBypass = false;
+    char g_dummyInventoryRecord[0x80] = {};
+
     int(__fastcall* OInventoryGate)(void* weaponsTC, void* edx, int defIndex) = nullptr;
+    void*(__fastcall* OInventoryRecordLookup)(void* weaponsTC, void* edx, int defIndex) = nullptr;
 
     int __fastcall HInventoryGate(void* weaponsTC, void* edx, int defIndex)
     {
@@ -347,6 +361,17 @@ namespace
         if (g_gateBypass && result <= 0)
             result = 1;
         return result;
+    }
+
+    void* __fastcall HInventoryRecordLookup(void* weaponsTC, void* edx, int defIndex)
+    {
+        if (g_gateBypass)
+        {
+            memset(g_dummyInventoryRecord, 0, sizeof(g_dummyInventoryRecord));
+            return g_dummyInventoryRecord;
+        }
+
+        return OInventoryRecordLookup(weaponsTC, edx, defIndex);
     }
 
     bool EnsureGateHook()
@@ -360,7 +385,11 @@ namespace
             installed = MH_CreateHook(reinterpret_cast<void*>(FN_INVENTORY_WEAPON_GATE),
                     reinterpret_cast<void*>(&HInventoryGate),
                     reinterpret_cast<void**>(&OInventoryGate)) == MH_OK
-                && MH_EnableHook(reinterpret_cast<void*>(FN_INVENTORY_WEAPON_GATE)) == MH_OK;
+                && MH_EnableHook(reinterpret_cast<void*>(FN_INVENTORY_WEAPON_GATE)) == MH_OK
+                && MH_CreateHook(reinterpret_cast<void*>(FN_INVENTORY_RECORD_LOOKUP),
+                    reinterpret_cast<void*>(&HInventoryRecordLookup),
+                    reinterpret_cast<void**>(&OInventoryRecordLookup)) == MH_OK
+                && MH_EnableHook(reinterpret_cast<void*>(FN_INVENTORY_RECORD_LOOKUP)) == MH_OK;
         }
 
         return installed;
