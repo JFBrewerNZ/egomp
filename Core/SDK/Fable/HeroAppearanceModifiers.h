@@ -128,6 +128,14 @@ public:
     // The carried melee weapon CThing itself (holder deref), or nullptr.
     CThing* GetCarriedMeleeThing();
 
+    // The game's own carried-weapon creator (0x5BE8F3), traced from the
+    // inventory-menu equip: validates the def, factory-creates the weapon
+    // with the CREATURE's mode byte (+0x90) at the creature's position,
+    // and copies the inventory record's augmentation data onto the new
+    // weapon's components — the wiring hand-made factory objects lacked.
+    // Returns the carried-ready weapon, or nullptr. SEH-guarded.
+    CThing* CreateCarriedWeapon(int defGlobalIndex);
+
     // Writes the carried-weapon holder (CIntelligentPointer::Assign,
     // 0xA01B90). Pass nullptr to clear. Call RegenerateCarriedWeapons
     // afterwards to rebuild the on-back visuals.

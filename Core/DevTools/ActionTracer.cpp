@@ -35,14 +35,11 @@ namespace
     // state the menu equip establishes first must be found upstream.
     const uintptr_t FN_REGEN_CARRIED_WEAPONS = 0x5C9962;
 
-    // The traced regen caller (0x5CA68E) turned out to be a wield-state
-    // reconciler — the new carried CThing already existed at its entry.
-    // These two hooks catch the actual creation and holstering upstream:
-    // the object factory (logs defIndex + MODE + call site) and the
-    // IntelligentPointer assign (logs call site when a CThingObject is
-    // being holstered). Log-only, when tracing.
+    // Factory hook: logs defIndex + MODE + call site when tracing. It (plus
+    // a since-removed holster hook) identified the menu-equip recipe:
+    // CreateCarriedWeapon 0x5BE8F3 -> holster tc+0x134 (~0x4A9760) ->
+    // regenerate.
     const uintptr_t FN_THING_OBJECT_CREATE = 0x703210;
-    const uintptr_t FN_IP_ASSIGN = 0xA01B90;
 
     bool g_installed = false;
     bool g_enabled = false;
@@ -94,8 +91,6 @@ namespace
 
     void*(__fastcall* OThingObjectCreate)(int defIndex, void* pos,
         int mode, int a2, int a3, void* name) = nullptr;
-
-    void(__fastcall* OIPAssign)(void* holder, void* edx, void* thing) = nullptr;
 
     std::string g_lastCtorLine;
     std::string g_lastResolveLine;
@@ -379,23 +374,6 @@ namespace
         return result;
     }
 
-    void __fastcall HIPAssign(void* holder, void* edx, void* thing)
-    {
-        if (g_enabled && thing)
-        {
-            const char* rtti = ObjectInspector::GetRttiName(thing);
-            if (rtti && strstr(rtti, "CThingObject"))
-            {
-                char line[240];
-                sprintf_s(line, "[IPAssign] caller=%p holder=%p thing=%p",
-                    _ReturnAddress(), holder, thing);
-                ObjectInspector::LogLine(line);
-            }
-        }
-
-        OIPAssign(holder, edx, thing);
-    }
-
     int __fastcall HDoCreatureAction(void* creature, void* edx, void* action)
     {
         const char* actionRtti = ObjectInspector::GetRttiName(action);
@@ -516,18 +494,13 @@ namespace ActionTracer
                 reinterpret_cast<void**>(&OThingObjectCreate)) == MH_OK
             && MH_EnableHook(reinterpret_cast<void*>(FN_THING_OBJECT_CREATE)) == MH_OK;
 
-        bool assignOk = MH_CreateHook(reinterpret_cast<void*>(FN_IP_ASSIGN),
-                reinterpret_cast<void*>(&HIPAssign),
-                reinterpret_cast<void**>(&OIPAssign)) == MH_OK
-            && MH_EnableHook(reinterpret_cast<void*>(FN_IP_ASSIGN)) == MH_OK;
-
         char line[240];
         sprintf_s(line, "[AnimTracer] hooks: resolver %s, ctor8 %s, ctor11 %s, weaponRegen %s,"
-            " factory %s, ipAssign %s",
+            " factory %s",
             resolveOk ? "ok" : "FAILED",
             ctor8Ok ? "ok" : "FAILED", ctor11Ok ? "ok" : "FAILED",
             regenOk ? "ok" : "FAILED",
-            factoryOk ? "ok" : "FAILED", assignOk ? "ok" : "FAILED");
+            factoryOk ? "ok" : "FAILED");
         ObjectInspector::LogLine(line);
     }
 

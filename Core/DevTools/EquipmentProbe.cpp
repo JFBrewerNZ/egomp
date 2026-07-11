@@ -630,20 +630,14 @@ namespace
 
 namespace EquipmentProbe
 {
-    // One factory MODE hypothesis per press: create the broadsword with
-    // that mode, assign it to the carried-melee holder, regenerate — the
-    // back-visual builder (0x5C36C2, inside RestoreCarriedWeapons) clones
-    // the weapon internally from its DEF with the def's own mode byte
-    // (+0x90), so the pickup path (dead end: inventory stores defs, the
-    // world thing is killed on pickup) is not needed at all. The right
-    // create-mode should make the source survive the builder's reads.
-    // On any fault the original carried weapon is restored immediately so
-    // the corrupted-carried-state delayed crash can't recur.
+    // The full equip-by-def chain, exactly as the inventory-menu equip does
+    // it (traced 2026-07-11 via the factory/holster hooks): the game's own
+    // CTCInventoryWeapons::CreateCarriedWeapon(defIndex) builds a properly
+    // wired carried weapon (creature mode byte + inventory-record
+    // augmentation copies), then holster + regenerate. On any fault the
+    // original carried weapon is restored immediately.
     void WeaponEquipProbe(CThingPlayerCreature* creature)
     {
-        static const int MODES[] = { 4, 0, 1, 2, 3, 5 };
-        static size_t modeIndex = 0;
-
         CTCInventoryWeapons* weapons = CTCInventoryWeapons::FromCreature(creature);
         if (!weapons)
         {
@@ -652,26 +646,18 @@ namespace EquipmentProbe
         }
 
         char buf[320];
-        int mode = MODES[modeIndex % (sizeof(MODES) / sizeof(MODES[0]))];
-        modeIndex++;
 
         CThing* original = weapons->GetCarriedMeleeThing();
 
         CCharString defName(PROBE_WEAPON_DEF);
         int defIndex = CDefinitionManager::Get()->GetDefGlobalIndexFromName(&defName);
 
-        C3DVector pos = *((CThing*)creature)->GetPos();
-        pos.X += 1.0f;
-
-        CCharString emptyName("");
-        unsigned long createException = 0;
-        CThing* fresh = (CThing*)GuardedObjectCreateMode(defIndex, &pos, mode,
-            &emptyName, &createException);
+        CThing* fresh = weapons->CreateCarriedWeapon(defIndex);
 
         if (!fresh)
         {
-            sprintf_s(buf, "[Equip] weapon probe mode=%d: create FAILED (exception %08lX)",
-                mode, createException);
+            sprintf_s(buf, "[Equip] weapon probe: CreateCarriedWeapon(%s def %d) FAILED",
+                PROBE_WEAPON_DEF, defIndex);
             ObjectInspector::LogLine(buf);
             return;
         }
@@ -686,9 +672,9 @@ namespace EquipmentProbe
             restored = GuardedCarriedEquip(weapons, original, &restoreException);
         }
 
-        sprintf_s(buf, "[Equip] weapon probe mode=%d: fresh=%p equip=%s (exception %08lX)%s"
-            " — press again to try the next mode; check the hero's back",
-            mode, (void*)fresh, ok ? "OK" : "FAULTED", equipException,
+        sprintf_s(buf, "[Equip] weapon probe: created %p via game path, equip=%s"
+            " (exception %08lX)%s — check the hero's back",
+            (void*)fresh, ok ? "OK" : "FAULTED", equipException,
             ok ? "" : (restored ? ", original restored" : ", RESTORE FAILED"));
         ObjectInspector::LogLine(buf);
     }

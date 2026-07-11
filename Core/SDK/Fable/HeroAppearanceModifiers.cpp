@@ -28,6 +28,11 @@ namespace
     // Weapons 0x5C8101 or the clear path 0x5C552C by sheathed mode).
     const uintptr_t FN_REGENERATE_CARRIED_WEAPONS = 0x5C9962;
 
+    // CTCInventoryWeapons::CreateCarriedWeapon(defIndex) — the menu-equip
+    // creation path (factory hook traced it: mode 0 for the hero, from
+    // creature+0x90).
+    const uintptr_t FN_CREATE_CARRIED_WEAPON = 0x5BE8F3;
+
     // Object factory + pickup action (see RE-NOTES.md / EquipmentProbe).
     const uintptr_t FN_THING_OBJECT_CREATE = 0x703210;
     const uintptr_t FN_ACTION_ADD_REAL_OBJECT_CTOR = 0x7EB2D0;
@@ -295,6 +300,22 @@ CThing* CTCInventoryWeapons::GetCarriedMeleeThing()
 {
     void* holder = (char*)this + WEAPON_MELEE_HOLDER_OFFSET;
     return ((CThing*(__thiscall*)(void*))FN_INTELLIGENT_POINTER_GET)(holder);
+}
+
+CThing* CTCInventoryWeapons::CreateCarriedWeapon(int defGlobalIndex)
+{
+    if (defGlobalIndex <= 0)
+        return nullptr;
+
+    __try
+    {
+        return ((CThing*(__thiscall*)(void*, int))FN_CREATE_CARRIED_WEAPON)(
+            this, defGlobalIndex);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return nullptr;
+    }
 }
 
 void CTCInventoryWeapons::SetCarriedMeleeWeapon(CThing* weapon)
