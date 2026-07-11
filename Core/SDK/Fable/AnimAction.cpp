@@ -200,14 +200,12 @@ namespace AnimAction
         int flag;
     };
 
-    // ctxId -> anim name, learned at the resolver hook. Only names are kept
-    // — the contexts themselves are per-action transients.
-    static std::unordered_map<unsigned long long, ContextNameEntry> g_contextNames;
-
-    static unsigned long long ContextKey(unsigned int id0, unsigned int id1)
-    {
-        return ((unsigned long long)id0 << 32) | id1;
-    }
+    // Anim id -> name, learned at the resolver hook. Keyed by the context's
+    // SECOND dword only: live capture showed dword0 is mutable state (the
+    // hero's ST_IDLE_SUBTLE context read 0xBE1, then 0xB72, then 0xACB)
+    // while dword1 is the stable anim identity (ST_IDLE_SUBTLE always
+    // 0x49C95, ST_BLINK 0x55615, ...).
+    static std::unordered_map<unsigned int, ContextNameEntry> g_contextNames;
 
     // SEH portion of NoteResolvedContext (no unwindable locals allowed
     // here). selectorKey's dword0 points at the name — live capture showed
@@ -243,23 +241,29 @@ namespace AnimAction
         }
     }
 
-    void NoteResolvedContext(void* context, void* selectorKey, int flag)
+    bool NoteResolvedContext(void* context, void* selectorKey, int flag,
+        char* nameOut, size_t nameOutSize)
     {
         unsigned int id0 = 0, id1 = 0;
         char name[AnimActionFields::NAME_MAX] = "";
 
         if (!ReadResolvedInfo(context, selectorKey, &id0, &id1, name, sizeof(name)))
-            return;
+            return false;
 
-        ContextNameEntry& entry = g_contextNames[ContextKey(id0, id1)];
+        ContextNameEntry& entry = g_contextNames[id1];
         strcpy_s(entry.name, name);
         entry.flag = flag;
+
+        if (nameOut)
+            strcpy_s(nameOut, nameOutSize, name);
+        return true;
     }
 
     bool LookupContextName(unsigned int id0, unsigned int id1,
         char* nameOut, size_t nameOutSize, int* flagOut)
     {
-        auto it = g_contextNames.find(ContextKey(id0, id1));
+        (void)id0; // mutable state, not identity — see the map comment
+        auto it = g_contextNames.find(id1);
         if (it == g_contextNames.end())
             return false;
 

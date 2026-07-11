@@ -30,6 +30,11 @@ namespace
     bool g_installed = false;
     bool g_enabled = false;
     ActionTracer::ActionObserver g_observer;
+    ActionTracer::ResolveObserver g_resolveObserver;
+
+    // Last anim resolved on a player creature (blinks excluded).
+    char g_lastHeroResolveName[AnimActionFields::NAME_MAX] = "";
+    int g_lastHeroResolveFlag = 0;
 
     // Suppress consecutive duplicates so a held-down action (e.g. running)
     // doesn't flood the log.
@@ -244,9 +249,25 @@ namespace
     {
         void* context = OResolveAnimContext(creature, edx, animKey, flag);
 
-        // Associate the context's portable id with the anim name the game
-        // resolved it from — feeds the wire-side name lookup.
-        AnimAction::NoteResolvedContext(context, animKey, flag);
+        // Associate the context's stable anim id with the anim name the
+        // game resolved it from — feeds the wire-side name lookup.
+        char animName[AnimActionFields::NAME_MAX] = "";
+        bool gotName = AnimAction::NoteResolvedContext(context, animKey, flag,
+            animName, sizeof(animName));
+
+        const char* creatureRtti = gotName ? ObjectInspector::GetRttiName(creature) : nullptr;
+        bool isPlayer = creatureRtti && strstr(creatureRtti, "PlayerCreature");
+
+        if (isPlayer && strncmp(animName, "ST_BLINK", 8) != 0)
+        {
+            strcpy_s(g_lastHeroResolveName, animName);
+            g_lastHeroResolveFlag = flag;
+        }
+
+        // Combat sync: broadcast the local hero's resolves (the receiver
+        // filters to its own hero and dedups).
+        if (gotName && g_resolveObserver)
+            g_resolveObserver(creature, animName, flag);
 
         if (g_enabled)
         {
@@ -256,24 +277,14 @@ namespace
             if (context)
                 DescribeValue(context, ctxDesc, sizeof(ctxDesc));
 
-            // What the registry now knows for this context's id — confirms
-            // whether name extraction worked.
-            char knownName[AnimActionFields::NAME_MAX] = "";
-            if (context && ObjectInspector::IsReadableMemory(context, 8))
-            {
-                const unsigned int* id = (const unsigned int*)context;
-                AnimAction::LookupContextName(id[0], id[1],
-                    knownName, sizeof(knownName), nullptr);
-            }
-
             char creatureName[128] = "?";
-            const char* creatureRtti = ObjectInspector::GetRttiName(creature);
-            if (creatureRtti) Demangle(creatureRtti, creatureName, sizeof(creatureName));
+            if (creatureRtti || (creatureRtti = ObjectInspector::GetRttiName(creature)) != nullptr)
+                Demangle(creatureRtti, creatureName, sizeof(creatureName));
 
             char line[480];
             sprintf_s(line, "[AnimResolve] creature=%-22s key=%p(%s) flag=%d -> ctx=%p(%s) name=%s",
                 creatureName, animKey, keyDesc, flag, context, ctxDesc,
-                knownName[0] ? knownName : "<none>");
+                gotName ? animName : "<none>");
 
             if (g_lastResolveLine != line)
             {
@@ -418,6 +429,22 @@ namespace ActionTracer
     void SetObserver(ActionObserver observer)
     {
         g_observer = std::move(observer);
+    }
+
+    void SetResolveObserver(ResolveObserver observer)
+    {
+        g_resolveObserver = std::move(observer);
+    }
+
+    bool GetLastHeroAnimResolve(char* nameOut, size_t nameOutSize, int* flagOut)
+    {
+        if (!g_lastHeroResolveName[0])
+            return false;
+
+        strcpy_s(nameOut, nameOutSize, g_lastHeroResolveName);
+        if (flagOut)
+            *flagOut = g_lastHeroResolveFlag;
+        return true;
     }
 
     bool GetLastAnimCapture(AnimActionFields& out)

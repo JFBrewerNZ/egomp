@@ -83,10 +83,12 @@ namespace AnimAction
 
     // --- Context-name registry ---
     // Fed by the resolver hook (ActionTracer hooks 0x662FA0): each resolved
-    // context's {id0, id1} is recorded together with the anim NAME the
-    // resolver was called with. Contexts themselves are transient — only
-    // the name is stored.
-    void NoteResolvedContext(void* context, void* selectorKey, int flag);
+    // context's stable anim id (dword1) is recorded together with the anim
+    // NAME the resolver was called with. Contexts themselves are transient
+    // — only the name is stored. Returns true and fills nameOut (optional)
+    // when a name was extracted.
+    bool NoteResolvedContext(void* context, void* selectorKey, int flag,
+        char* nameOut, size_t nameOutSize);
 
     // The anim name (and resolver flag) recorded for a context id. False if
     // this machine has not seen that id resolved yet.

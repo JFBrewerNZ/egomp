@@ -29,6 +29,9 @@ public:
     // Fires (game thread) for every creature action. Broadcasts the local
     // hero's whitelisted combat actions so remote puppets mirror them.
     void HandleLocalCreatureAction(void* creature, void* action, const char* actionClass);
+    // Fires for every anim-context resolve; broadcasts the local hero's
+    // purposeful (flag=1) anims: unsheathe/sheathe/bow-load/fire/...
+    void HandleLocalAnimResolve(void* creature, const char* animName, int flag);
     void ReceiveNetPlayerAction(int networkId, int actionType, C3DVector direction);
     void ReceiveNetPlayerAnim(int networkId, const AnimActionFields& fields);
 
@@ -73,6 +76,8 @@ private:
     void SendLocalAnimAction(const AnimActionFields& fields);
 
     unsigned long long lastAnimSendMs = 0;
+    char lastResolveSentName[96] = "";
+    unsigned long long lastResolveSentMs = 0;
 
     std::vector<int> lastSentAppearance;
     HeroMorphValues lastSentMorph;

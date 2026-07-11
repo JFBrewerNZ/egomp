@@ -148,6 +148,44 @@ void NetPlayerManager::ReceiveNetPlayerAction(int networkId, int actionType, C3D
     CombatActions::Perform(creature, (CombatActionType)actionType, direction);
 }
 
+// Same anim resolving twice within this window = the game re-querying a
+// held state (bow-load resolves every frame while drawn), not a new move.
+static const unsigned long long RESOLVE_RESEND_WINDOW_MS = 400;
+
+void NetPlayerManager::HandleLocalAnimResolve(void* creature, const char* animName, int flag)
+{
+    if (!localNetPlayer || !animName || !animName[0])
+        return;
+
+    // Only purposeful one-shot anims (flag=1: unsheathe/sheathe/bow-load/
+    // fire). flag=0 covers idles/blinks/locomotion, which puppets already
+    // produce on their own.
+    if (flag != 1)
+        return;
+
+    CThingPlayerCreature* localHero = GetCreatureFromLocalId(localNetPlayer->GetLocalId());
+    if (!localHero || creature != localHero)
+        return;
+
+    unsigned long long now = GetTickCount64();
+    if (std::strcmp(lastResolveSentName, animName) == 0
+        && now - lastResolveSentMs < RESOLVE_RESEND_WINDOW_MS)
+        return;
+
+    strcpy_s(lastResolveSentName, animName);
+    lastResolveSentMs = now;
+
+    // A resolver event has no captured action fields — send defaults
+    // matching the game's own one-shot PlayAnimation constructions.
+    AnimActionFields fields;
+    strcpy_s(fields.ctxName, animName);
+    fields.ctxFlag = flag;
+    fields.loops = 0;
+    fields.a9 = 1;
+
+    SendLocalAnimAction(fields);
+}
+
 void NetPlayerManager::SendLocalAnimAction(const AnimActionFields& fields)
 {
     unsigned long long now = GetTickCount64();

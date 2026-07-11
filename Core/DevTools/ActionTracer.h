@@ -36,7 +36,18 @@ namespace ActionTracer
     using ActionObserver = std::function<void(void* creature, void* action, const char* actionClass)>;
     void SetObserver(ActionObserver observer);
 
+    // Observer for anim-context resolutions (hook on 0x662FA0): fires with
+    // the creature, the resolved anim NAME, and the resolver flag. This is
+    // the combat-anim funnel — unsheathe/sheathe/bow-load/fire resolve here
+    // (flag=1) on the acting creature right before their actions run.
+    using ResolveObserver = std::function<void(void* creature, const char* animName, int flag)>;
+    void SetResolveObserver(ResolveObserver observer);
+
     // Last PlayAnimation-family action captured while logging was enabled
     // (from any creature, NPCs included). False if none captured yet.
     bool GetLastAnimCapture(AnimActionFields& out);
+
+    // Last anim resolved on a player creature (ST_BLINK excluded — it fires
+    // constantly and is never what a replay test wants). For NUMPAD9.
+    bool GetLastHeroAnimResolve(char* nameOut, size_t nameOutSize, int* flagOut);
 }

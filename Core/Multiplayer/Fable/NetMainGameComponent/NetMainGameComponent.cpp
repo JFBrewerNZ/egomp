@@ -181,33 +181,30 @@ void NetMainGameComponent::HandleDebugKeys()
         EquipmentProbe::DumpEquipment(creature);
 
     // Local end-to-end test of the animation-sync apply path, no LAN
-    // needed: NUMPAD9 replays the newest captured anim action on the local
-    // hero by resolving a FRESH context from the anim name — exactly what a
-    // remote peer does with an incoming ID_PLAYER_ANIM. (Never replays a
-    // captured context pointer: those are per-action transients and doing
-    // so crashed the game.)
+    // needed: NUMPAD9 replays the hero's most recently RESOLVED anim
+    // (draw a weapon or nock the bow first, then press) by minting a fresh
+    // context from the name — exactly what a remote peer does with an
+    // incoming ID_PLAYER_ANIM. (Never replays a captured context pointer:
+    // those are per-action transients and doing so crashed the game.)
     if (replayAnim)
     {
         AnimActionFields fields;
-        if (!ActionTracer::GetLastAnimCapture(fields))
+        fields.a9 = 1;
+
+        int flag = 0;
+        if (!ActionTracer::GetLastHeroAnimResolve(fields.ctxName, sizeof(fields.ctxName), &flag))
         {
-            std::cout << "[EgoMP] Anim replay: nothing captured yet — stand near NPCs first"
-                << std::endl;
-        }
-        else if (!fields.ctxName[0] && !fields.name[0])
-        {
-            std::cout << "[EgoMP] Anim replay: last capture has no resolved name"
-                " (resolver hook saw nothing for ctxId=" << std::hex
-                << fields.ctxId0 << "/" << fields.ctxId1 << std::dec << ")" << std::endl;
+            std::cout << "[EgoMP] Anim replay: no hero anim resolved yet — move around or"
+                " draw a weapon first" << std::endl;
         }
         else
         {
-            const char* resolveName = fields.ctxName[0] ? fields.ctxName : fields.name;
-            void* context = AnimAction::ResolveContext(creature, resolveName, fields.ctxFlag);
+            fields.ctxFlag = flag;
+            void* context = AnimAction::ResolveContext(creature, fields.ctxName, flag);
 
             bool ok = context && AnimAction::Play(creature, fields, context);
-            std::cout << "[EgoMP] Anim replay '" << resolveName
-                << "' (d24=" << fields.d24 << ", loops=" << fields.loops
+            std::cout << "[EgoMP] Anim replay '" << fields.ctxName
+                << "' (flag=" << flag
                 << ", ctx=" << (context ? "resolved" : "RESOLVE FAILED") << "): "
                 << (ok ? "posted" : "FAILED") << std::endl;
         }
@@ -306,6 +303,10 @@ void NetMainGameComponent::SetupNetworkCallbacks()
     ActionTracer::SetObserver([this](void* creature, void* action, const char* actionClass) {
         if (netPlayerManager)
             netPlayerManager->HandleLocalCreatureAction(creature, action, actionClass);
+    });
+    ActionTracer::SetResolveObserver([this](void* creature, const char* animName, int flag) {
+        if (netPlayerManager)
+            netPlayerManager->HandleLocalAnimResolve(creature, animName, flag);
     });
 
     network->AddConnectionNotificationCallback("ConnectionNotification", [this](int networkId, SystemAddress systemAddress) {
@@ -483,6 +484,7 @@ void NetMainGameComponent::ClearNetworkCallbacks()
 {
     // Stop routing actions before the NetPlayerManager is destroyed.
     ActionTracer::SetObserver(nullptr);
+    ActionTracer::SetResolveObserver(nullptr);
 
     if (network) {
         network->RemoveNetPlayerActionCallback("NetPlayerAction");
