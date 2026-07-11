@@ -589,6 +589,25 @@ namespace EquipmentProbe
 
 namespace
 {
+    // A weapon is safe to place in a carried holder only after the pickup
+    // completed: the object must be alive (+0x91 deleted flag clear) and
+    // carry the equipped-weapon wiring the visual builder dereferences —
+    // the +0x48/+0x4C attachment-marker buffers a fresh factory object
+    // lacks (their absence is the known 0x5C36C2 fault, and equipping an
+    // unwired weapon corrupts carried-visual state: confirmed crash
+    // 2026-07-11 when step 2 ran before the acquire was confirmed).
+    bool IsWeaponWired(CThing* weapon)
+    {
+        if (!ObjectInspector::IsReadableMemory(weapon, 0x94))
+            return false;
+        if (*((const unsigned char*)weapon + 0x91) & 1)
+            return false;
+
+        void* marker48 = *(void* const*)((const char*)weapon + 0x48);
+        void* marker4C = *(void* const*)((const char*)weapon + 0x4C);
+        return marker48 != nullptr && marker4C != nullptr;
+    }
+
     // SEH-isolated step 2 (no unwindable locals allowed here).
     bool GuardedCarriedEquip(CTCInventoryWeapons* weapons, CThing* weapon,
         unsigned long* exceptionCode)
@@ -632,6 +651,20 @@ namespace EquipmentProbe
             sprintf_s(buf, "[Equip] weapon probe step 1: %s (def %d) created @ %p,"
                 " pickup posted — wait for the acquire popup, then press NUMPAD8 again to equip",
                 PROBE_WEAPON_DEF, defIndex, (void*)pendingWeapon);
+            ObjectInspector::LogLine(buf);
+            return;
+        }
+
+        if (!IsWeaponWired(pendingWeapon))
+        {
+            void* m48 = ObjectInspector::IsReadableMemory(pendingWeapon, 0x94)
+                ? *(void**)((char*)pendingWeapon + 0x48) : (void*)~0u;
+            void* m4C = ObjectInspector::IsReadableMemory(pendingWeapon, 0x94)
+                ? *(void**)((char*)pendingWeapon + 0x4C) : (void*)~0u;
+
+            sprintf_s(buf, "[Equip] weapon probe: %p not wired yet (+0x48=%p +0x4C=%p)"
+                " — confirm the acquire popup (left-click) first, then press NUMPAD8 again",
+                (void*)pendingWeapon, m48, m4C);
             ObjectInspector::LogLine(buf);
             return;
         }
