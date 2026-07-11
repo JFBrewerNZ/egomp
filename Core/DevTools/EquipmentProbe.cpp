@@ -324,6 +324,24 @@ namespace
         }
     }
 
+    // 0x5C36C2: __fastcall(creature, weaponThing) — builds the carried
+    // weapon visual on the creature's back (the save-load restore path,
+    // no inventory/popup). Second arg is a weapon CThing (the factory
+    // produces one).
+    const uintptr_t FN_ATTACH_CARRIED_WEAPON = 0x5C36C2;
+
+    void GuardedAttachCarried(void* creature, void* weaponObject, unsigned long* exceptionCode)
+    {
+        *exceptionCode = 0;
+        __try
+        {
+            ((void(__fastcall*)(void*, void*))FN_ATTACH_CARRIED_WEAPON)(creature, weaponObject);
+        }
+        __except (*exceptionCode = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
+        {
+        }
+    }
+
     // Plain functions: __try cannot share a frame with unwindable objects.
     int GuardedThiscall1(uintptr_t fn, void* self, void* arg, unsigned long* exceptionCode)
     {
@@ -523,10 +541,12 @@ namespace EquipmentProbe
         if (!object || !rtti)
             return;
 
-        unsigned long pickupException = 0;
-        GuardedPickup(creature, object, &pickupException);
-        sprintf_s(buf, "[Equip] probe: pickup action posted (exception 0x%X)"
-            " - did the hero grab/stow the sword?", (unsigned)pickupException);
+        // Attach it as a carried weapon on the back (the puppet path — no
+        // inventory, no popup) instead of the pickup action.
+        unsigned long attachException = 0;
+        GuardedAttachCarried(creature, object, &attachException);
+        sprintf_s(buf, "[Equip] probe: attach-carried called (exception 0x%X)"
+            " - is a sword now on the hero's back?", (unsigned)attachException);
         Emit(report, buf);
         ObjectInspector::AppendToLogFile(report);
     }
