@@ -134,6 +134,7 @@ public:
 enum class CombatActionType
 {
     Roll = 0,   // CCombatAction_ControlledStrafeJump
+    Block = 1,  // CCreatureAction_StartBlocking
     Count
 };
 

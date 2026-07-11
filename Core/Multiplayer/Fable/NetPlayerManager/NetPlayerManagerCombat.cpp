@@ -10,6 +10,8 @@ static int CombatActionTypeForClass(const char* actionClass)
 {
     if (std::strstr(actionClass, "ControlledStrafeJump"))
         return (int)CombatActionType::Roll;
+    if (std::strstr(actionClass, "StartBlocking"))
+        return (int)CombatActionType::Block;
 
     return -1;
 }
@@ -44,14 +46,10 @@ void NetPlayerManager::HandleLocalCreatureAction(void* creature, const char* act
             forward = rh->Forward;
     }
 
-    std::cout << "[Combat] send action " << actionType
-        << " accel=(" << accel.X << "," << accel.Y << "," << accel.Z << ")"
-        << " forward=(" << forward.X << "," << forward.Y << "," << forward.Z << ")"
-        << std::endl;
-
-    // Send acceleration for now (the roll fix); switch source once the log
-    // shows which field is non-zero on a moving roll.
-    C3DVector direction = accel;
+    // forward (facing) is always a clean unit vector; accel is ~0 at steady
+    // speed. Use the facing direction as the roll direction.
+    C3DVector direction = forward;
+    (void)accel;
 
     int networkId = localNetPlayer->GetNetworkId();
 

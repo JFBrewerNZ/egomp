@@ -37,6 +37,11 @@ namespace
     const uintptr_t VT_CONTROLLED_STRAFE_JUMP = 0x12766A4;
     const int STRAFE_JUMP_MODE_ROLL = 2;
 
+    // StartBlocking builder: __thiscall(actionBuffer, creature); creature-
+    // only (ret 4), builds and stamps the block action. From the block
+    // trigger @0x62D14B.
+    const uintptr_t FN_BUILD_BLOCK = 0x855BE0;
+
     const size_t MORPH_BLOB_OFFSET = 0x40;
     const size_t MORPH_DIRTY_FLAG_OFFSET = 0x3D;
     const uintptr_t FN_MORPH_UPDATE_PUMP = 0x71E130;
@@ -306,6 +311,9 @@ namespace CombatActions
                 action = actionBuffer;
                 break;
             }
+            case CombatActionType::Block:
+                action = ((void*(__thiscall*)(void*, void*))FN_BUILD_BLOCK)(actionBuffer, creature);
+                break;
             default:
                 return;
             }
