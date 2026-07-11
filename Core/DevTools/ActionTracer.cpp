@@ -2,6 +2,7 @@
 #include "ObjectInspector.h"
 
 #include <windows.h>
+#include <intrin.h>
 #include <MinHook/include/MinHook.h>
 
 #include <string>
@@ -26,6 +27,13 @@ namespace
     // logging): it is where context ids get associated with anim names —
     // the wire currency of animation sync.
     const uintptr_t FN_RESOLVE_ANIM_CONTEXT = 0x662FA0;
+
+    // CTCInventoryWeapons::RegenerateCarriedWeapons — every real equip
+    // path ends here. Hooked (log-only, when tracing) to identify the
+    // TRUE equip-from-inventory call site by return address: raw probes
+    // that write the carried holders directly all fault, so whatever
+    // state the menu equip establishes first must be found upstream.
+    const uintptr_t FN_REGEN_CARRIED_WEAPONS = 0x5C9962;
 
     bool g_installed = false;
     bool g_enabled = false;
@@ -72,6 +80,8 @@ namespace
 
     void*(__fastcall* OResolveAnimContext)(void* creature, void* edx,
         void* animKey, int flag) = nullptr;
+
+    void(__fastcall* ORegenCarriedWeapons)(void* weaponsTC, void* edx) = nullptr;
 
     std::string g_lastCtorLine;
     std::string g_lastResolveLine;
@@ -300,6 +310,45 @@ namespace
         return context;
     }
 
+    void __fastcall HRegenCarriedWeapons(void* weaponsTC, void* edx)
+    {
+        if (g_enabled)
+        {
+            void* caller = _ReturnAddress();
+
+            // Carried holders: CIntelligentPointer {vptr, node*}, node[0] =
+            // the weapon CThing. Active def indexes sit at +0x13C / +0x14C.
+            const char* tc = (const char*)weaponsTC;
+            void* meleeNode = ObjectInspector::IsReadableMemory(tc + 0x134, 0x28)
+                ? *(void* const*)(tc + 0x138) : (void*)~0u;
+            void* meleeThing = ObjectInspector::IsReadableMemory(meleeNode, 8)
+                ? *(void* const*)meleeNode : nullptr;
+            void* rangedNode = ObjectInspector::IsReadableMemory(tc + 0x148, 0x14)
+                ? *(void* const*)(tc + 0x14C) : (void*)~0u;
+            void* rangedThing = ObjectInspector::IsReadableMemory(rangedNode, 8)
+                ? *(void* const*)rangedNode : nullptr;
+            unsigned int meleeDef2 = ObjectInspector::IsReadableMemory(tc + 0x13C, 4)
+                ? *(const unsigned int*)(tc + 0x13C) : ~0u;
+            unsigned int rangedDef2 = ObjectInspector::IsReadableMemory(tc + 0x14C, 4)
+                ? *(const unsigned int*)(tc + 0x14C) : ~0u;
+
+            char meleeDesc[96] = "null";
+            if (meleeThing)
+                DescribeValue(meleeThing, meleeDesc, sizeof(meleeDesc));
+
+            char line[420];
+            sprintf_s(line, "[WeaponRegen] caller=%p tc=%p melee=%p(%s) ranged=%p "
+                "def13C=%08X def14C=%08X",
+                caller, weaponsTC, meleeThing, meleeDesc, rangedThing,
+                meleeDef2, rangedDef2);
+
+            // No dedupe: every regen matters when tracing an equip.
+            ObjectInspector::LogLine(line);
+        }
+
+        ORegenCarriedWeapons(weaponsTC, edx);
+    }
+
     int __fastcall HDoCreatureAction(void* creature, void* edx, void* action)
     {
         const char* actionRtti = ObjectInspector::GetRttiName(action);
@@ -410,10 +459,16 @@ namespace ActionTracer
                 reinterpret_cast<void**>(&OResolveAnimContext)) == MH_OK
             && MH_EnableHook(reinterpret_cast<void*>(FN_RESOLVE_ANIM_CONTEXT)) == MH_OK;
 
-        char line[160];
-        sprintf_s(line, "[AnimTracer] hooks: resolver %s, ctor8 %s, ctor11 %s",
+        bool regenOk = MH_CreateHook(reinterpret_cast<void*>(FN_REGEN_CARRIED_WEAPONS),
+                reinterpret_cast<void*>(&HRegenCarriedWeapons),
+                reinterpret_cast<void**>(&ORegenCarriedWeapons)) == MH_OK
+            && MH_EnableHook(reinterpret_cast<void*>(FN_REGEN_CARRIED_WEAPONS)) == MH_OK;
+
+        char line[200];
+        sprintf_s(line, "[AnimTracer] hooks: resolver %s, ctor8 %s, ctor11 %s, weaponRegen %s",
             resolveOk ? "ok" : "FAILED",
-            ctor8Ok ? "ok" : "FAILED", ctor11Ok ? "ok" : "FAILED");
+            ctor8Ok ? "ok" : "FAILED", ctor11Ok ? "ok" : "FAILED",
+            regenOk ? "ok" : "FAILED");
         ObjectInspector::LogLine(line);
     }
 
