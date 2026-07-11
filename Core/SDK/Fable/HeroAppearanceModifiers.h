@@ -127,3 +127,19 @@ public:
     // auto-equips it onto the back). Guarded; a bad def is a no-op.
     static void GiveWeapon(CThingPlayerCreature* creature, int defGlobalIndex);
 };
+
+// Replicated combat actions (see the tracer capture in RE-NOTES.md). Most
+// hero actions take only the creature, so each is built with a
+// build(buffer, creature) wrapper and posted through DoCreatureAction.
+enum class CombatActionType
+{
+    Roll = 0,   // CCombatAction_ControlledStrafeJump
+    Count
+};
+
+namespace CombatActions
+{
+    // Reconstructs the given action on the creature and posts it via
+    // DoCreatureAction. SEH-guarded; unknown types are a no-op.
+    void Perform(CThingPlayerCreature* creature, CombatActionType type);
+}

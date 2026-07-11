@@ -13,6 +13,7 @@ namespace
 
     bool g_installed = false;
     bool g_enabled = false;
+    ActionTracer::ActionObserver g_observer;
 
     // Suppress consecutive duplicates so a held-down action (e.g. running)
     // doesn't flood the log.
@@ -44,14 +45,18 @@ namespace
 
     int __fastcall HDoCreatureAction(void* creature, void* edx, void* action)
     {
+        const char* actionRtti = ObjectInspector::GetRttiName(action);
+        char actionName[128] = "?";
+        if (actionRtti) Demangle(actionRtti, actionName, sizeof(actionName));
+
+        // Combat sync observer runs regardless of debug logging.
+        if (g_observer && actionRtti)
+            g_observer(creature, action, actionName);
+
         if (g_enabled)
         {
-            const char* actionRtti = ObjectInspector::GetRttiName(action);
             const char* creatureRtti = ObjectInspector::GetRttiName(creature);
-
-            char actionName[128] = "?";
             char creatureName[128] = "?";
-            if (actionRtti) Demangle(actionRtti, actionName, sizeof(actionName));
             if (creatureRtti) Demangle(creatureRtti, creatureName, sizeof(creatureName));
 
             char line[320];
@@ -104,5 +109,10 @@ namespace ActionTracer
     bool IsEnabled()
     {
         return g_enabled;
+    }
+
+    void SetObserver(ActionObserver observer)
+    {
+        g_observer = std::move(observer);
     }
 }

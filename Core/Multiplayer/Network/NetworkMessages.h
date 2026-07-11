@@ -4,7 +4,7 @@
 
 // Bumped whenever a payload changes shape; mismatching peers are rejected
 // at ID_CONNECTION_NOTIFICATION.
-const int EGOMP_PROTOCOL_VERSION = 7;
+const int EGOMP_PROTOCOL_VERSION = 8;
 
 // Every payload is prefixed with its [uint8 messageId].
 // "host" below means the session authority: either a hosting player (P2P)
@@ -55,5 +55,11 @@ enum NetworkMessages
     // hat/horns...). Sent shortly after connecting and whenever any of it
     // changes; the host stores the latest per player and seeds it to
     // joining clients.
-    ID_PLAYER_APPEARANCE
+    ID_PLAYER_APPEARANCE,
+
+    // sender -> host -> other clients: [int networkId][int actionType]
+    // A momentary combat action the sender's hero performed (roll, block,
+    // draw, swing, ...). Reconstructed on each remote puppet so it mirrors
+    // the move. Sent unreliably — a dropped action is simply not mirrored.
+    ID_PLAYER_ACTION
 };

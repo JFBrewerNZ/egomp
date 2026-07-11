@@ -194,6 +194,7 @@
     <ClCompile Include="DevTools\ObjectInspector.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="Multiplayer\Fable\NetMainGameComponent\NetMainGameComponent.cpp" />
+    <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerCombat.cpp" />
     <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerAppearance.cpp" />
     <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerLifecycle.cpp" />
     <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerMotion.cpp" />

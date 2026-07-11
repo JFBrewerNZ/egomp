@@ -117,6 +117,10 @@ private:
                 HandlePlayerAppearance(packet);
                 break;
 
+            case ID_PLAYER_ACTION:
+                HandlePlayerAction(packet);
+                break;
+
             case ID_DISCONNECTION_NOTIFICATION:
             case ID_CONNECTION_LOST:
                 HandleDisconnect(packet);
@@ -379,6 +383,23 @@ private:
 
         std::cout << "[Server] Player " << senderId << " appearance updated ("
             << count << " modifiers)" << std::endl;
+    }
+
+    void HandlePlayerAction(Packet* packet)
+    {
+        BitStream in(packet->data, packet->length, false);
+        in.IgnoreBytes(sizeof(MessageID));
+
+        int networkId = -1;
+        int actionType = -1;
+        in.Read(networkId);
+        in.Read(actionType);
+
+        int senderId = GetNetworkIdFromAddress(packet->systemAddress);
+        if (senderId == -1 || senderId != networkId)
+            return;
+
+        SendToAnnouncedExcept(senderId, packet, HIGH_PRIORITY, UNRELIABLE);
     }
 
     void HandleDisconnect(Packet* packet)

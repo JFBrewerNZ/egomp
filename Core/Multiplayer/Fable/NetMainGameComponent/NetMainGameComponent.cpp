@@ -265,8 +265,24 @@ void NetMainGameComponent::Disconnect()
 
 void NetMainGameComponent::SetupNetworkCallbacks()
 {
+    // Route every creature action through the combat-sync send path. The
+    // hook is installed once and left in place; the observer is cleared on
+    // disconnect so it never dereferences a destroyed NetPlayerManager.
+    ActionTracer::Install();
+    ActionTracer::SetObserver([this](void* creature, void* action, const char* actionClass) {
+        if (netPlayerManager)
+            netPlayerManager->HandleLocalCreatureAction(creature, actionClass);
+    });
+
     network->AddConnectionNotificationCallback("ConnectionNotification", [this](int networkId, SystemAddress systemAddress) {
         netPlayerManager->ConnectionNotification(networkId, systemAddress);
+    });
+    network->AddNetPlayerActionCallback("NetPlayerAction", [this](BitStream& bs) {
+        int networkId = -1;
+        int actionType = -1;
+        bs.Read(networkId);
+        bs.Read(actionType);
+        netPlayerManager->ReceiveNetPlayerAction(networkId, actionType);
     });
     network->AddCreateLocalNetPlayerCallback("CreateLocalNetPlayer", [this](BitStream& bs) {
         int networkId = -1;
@@ -392,7 +408,11 @@ void NetMainGameComponent::SetupNetworkCallbacks()
 
 void NetMainGameComponent::ClearNetworkCallbacks()
 {
+    // Stop routing actions before the NetPlayerManager is destroyed.
+    ActionTracer::SetObserver(nullptr);
+
     if (network) {
+        network->RemoveNetPlayerActionCallback("NetPlayerAction");
         network->RemoveConnectionNotificationCallback("ConnectionNotification");
         network->RemoveDisconnectionNotificationCallback("DisconnectionNotification");
         network->RemoveConnectionLostCallback("ConnectionLost");

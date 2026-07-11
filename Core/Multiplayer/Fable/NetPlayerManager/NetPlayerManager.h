@@ -25,6 +25,11 @@ public:
     void ReceiveNetPlayerRegion(int networkId, int regionIndex, C3DVector position);
     void ReceiveNetPlayerAppearance(int networkId, HeroMorphValues morph, HeroStatsExperience exp, int meleeWeaponDef, int rangedWeaponDef, std::vector<int> modifierDefIndexes);
 
+    // Fires (game thread) for every creature action. Broadcasts the local
+    // hero's whitelisted combat actions so remote puppets mirror them.
+    void HandleLocalCreatureAction(void* creature, const char* actionClass);
+    void ReceiveNetPlayerAction(int networkId, int actionType);
+
     // Called every game update: broadcasts the local hero's appearance
     // whenever the modifier set changes (throttled).
     void UpdateAppearanceSync();

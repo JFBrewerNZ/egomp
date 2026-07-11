@@ -275,6 +275,9 @@
     <ClCompile Include="SDK\Fable\HeroAppearanceModifiers.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerCombat.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Multiplayer\Fable\NetPlayerManager\NetPlayerManagerAppearance.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

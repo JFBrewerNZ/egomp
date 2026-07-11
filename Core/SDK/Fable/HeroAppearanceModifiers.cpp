@@ -27,6 +27,11 @@ namespace
     const uintptr_t FN_ACTION_ADD_REAL_OBJECT_CTOR = 0x7EB2D0;
     const uintptr_t FN_DO_CREATURE_ACTION = 0x6644F0;
 
+    // Combat action builders: __thiscall(actionBuffer, creature) construct
+    // the action in a stack buffer; then DoCreatureAction posts it. From
+    // the trigger functions each move flows through (tracer capture).
+    const uintptr_t FN_BUILD_ROLL = 0x85BB60; // ControlledStrafeJump builder
+
     const size_t MORPH_BLOB_OFFSET = 0x40;
     const size_t MORPH_DIRTY_FLAG_OFFSET = 0x3D;
     const uintptr_t FN_MORPH_UPDATE_PUMP = 0x71E130;
@@ -268,6 +273,38 @@ int CTCInventoryWeapons::GetCarriedMeleeDefIndex()
 int CTCInventoryWeapons::GetCarriedRangedDefIndex()
 {
     return CarriedWeaponDefIndex(this, WEAPON_RANGED_HOLDER_OFFSET);
+}
+
+namespace CombatActions
+{
+    void Perform(CThingPlayerCreature* creature, CombatActionType type)
+    {
+        if (!creature)
+            return;
+
+        __try
+        {
+            // Action objects are constructed in a stack buffer (~0xB8 bytes
+            // at real call sites); 0x140 is a safe margin.
+            char actionBuffer[0x140];
+            void* action = nullptr;
+
+            switch (type)
+            {
+            case CombatActionType::Roll:
+                action = ((void*(__thiscall*)(void*, void*))FN_BUILD_ROLL)(actionBuffer, creature);
+                break;
+            default:
+                return;
+            }
+
+            if (action)
+                ((int(__thiscall*)(void*, void*))FN_DO_CREATURE_ACTION)(creature, action);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+        }
+    }
 }
 
 void CTCInventoryWeapons::GiveWeapon(CThingPlayerCreature* creature, int defGlobalIndex)
