@@ -199,7 +199,9 @@ void NetMainGameComponent::HandleDebugKeys()
             void* context = useContext ? fields.localContext : nullptr;
 
             bool ok = AnimAction::Play(creature, fields, context);
-            std::cout << "[EgoMP] Anim replay '" << fields.name << "' (loops=" << fields.loops
+            std::cout << "[EgoMP] Anim replay '"
+                << (fields.name[0] ? fields.name : "<nameless>")
+                << "' (d24=" << fields.d24 << ", loops=" << fields.loops
                 << ", context=" << (useContext ? "captured" : "null") << "): "
                 << (ok ? "posted" : "FAILED") << std::endl;
 
@@ -331,9 +333,10 @@ void NetMainGameComponent::SetupNetworkCallbacks()
         bs.Read(fields.b0);
         bs.Read(nameLen);
 
-        if (nameLen == 0 || nameLen >= AnimActionFields::NAME_MAX)
+        // nameLen == 0 is a nameless anim (NPC-ambient style) — valid.
+        if (nameLen >= AnimActionFields::NAME_MAX)
             return;
-        if (!bs.ReadAlignedBytes((unsigned char*)fields.name, nameLen))
+        if (nameLen > 0 && !bs.ReadAlignedBytes((unsigned char*)fields.name, nameLen))
             return;
         fields.name[nameLen] = '\0';
 

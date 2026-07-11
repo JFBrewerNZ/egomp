@@ -83,34 +83,39 @@ namespace
         out.b0 = *(const unsigned char*)(base + OFF_B0);
         out.loops = *(const int*)(base + OFF_LOOPS);
 
-        // Name-handle node (0x99EA60): dword0 is expected to be the char*
-        // of the copied name; fall back to reading the node as inline chars
-        // in case the layout is the other way round. The tracer logs which
-        // interpretation produced the name.
+        // Name-handle node (0x99EA60/0x9A0300): {char* chars, int len, ...}.
+        // A null handle is normal — nameless anims (NPC ambients) select
+        // their animation via the resolved +0x74 context and d24 instead.
         const char* handle = *(const char* const*)(base + OFF_ANIM_KEY);
-        if (!IsReadable(handle, 8))
-            return false;
+        out.localKey0 = (void*)handle;
 
-        const char* indirect = *(const char* const*)handle;
-        if (CopyPlausibleName(indirect, out.name, AnimActionFields::NAME_MAX))
-            return true;
+        if (IsReadable(handle, 8))
+        {
+            const char* chars = *(const char* const*)handle;
+            CopyPlausibleName(chars, out.name, AnimActionFields::NAME_MAX);
+        }
 
-        return CopyPlausibleName(handle, out.name, AnimActionFields::NAME_MAX);
+        return true;
     }
 
     bool PlayImpl(CThingPlayerCreature* creature, const AnimActionFields& fields, void* context)
     {
-        // 8-byte anim key rebuilt from the name. The key node is
-        // deliberately not released afterwards: the action copies the key
-        // dwords without an addref, so releasing here could free the node
-        // under the action. One 0x11-byte node per play is an acceptable
-        // leak until the ownership rule is confirmed.
+        // 8-byte anim key. Nameless captures replay with an empty key —
+        // exactly what the game passed. Named ones rebuild the key node
+        // from the name; that node is deliberately not released afterwards:
+        // the action copies the key dwords without an addref, so releasing
+        // here could free the node under the action. One small node per
+        // named play is an acceptable leak until the ownership rule is
+        // confirmed.
         unsigned int animKey[2] = { 0, fields.keyExtra };
-        ((void*(__thiscall*)(void*, const char*, int))FN_ANIM_KEY_CTOR)(
-            animKey, fields.name, -1);
+        if (fields.name[0])
+        {
+            ((void*(__thiscall*)(void*, const char*, int))FN_ANIM_KEY_CTOR)(
+                animKey, fields.name, -1);
 
-        if (!animKey[0])
-            return false;
+            if (!animKey[0])
+                return false;
+        }
 
         // Real call sites construct the action in a ~0xB8 stack buffer.
         char actionBuffer[0x140] = {};
@@ -161,7 +166,7 @@ namespace AnimAction
 
     bool Play(CThingPlayerCreature* creature, const AnimActionFields& fields, void* context)
     {
-        if (!creature || !fields.name[0])
+        if (!creature)
             return false;
 
         __try

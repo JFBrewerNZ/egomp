@@ -16,20 +16,27 @@
 //   +0x74 optional context thing (base ctor arg 4, via 0x693030)
 //   +0xA8..+0xAB, +0xB0 behaviour flag bytes
 //   +0xAC loop count (-1 = infinite, 0 = once)
+// Live capture (2026-07-11): NPC ambient PlayAnimation actions carry an
+// EMPTY name key (key dword0 = 0) — they pick the animation via a selector
+// resolved against the creature's anim-set map (0x662FA0 -> +0x74 context)
+// plus the small d24 enum. Named keys are used by scripted/spell anims. The
+// name node (when present) is a string object: {char* chars, int len, ...}
+// (setters 0x9A0590/0x9A0300), so [handle+0] is the name.
 struct AnimActionFields
 {
     static const size_t NAME_MAX = 96;
 
-    char name[NAME_MAX] = "";     // recovered anim name; "" = none
+    char name[NAME_MAX] = "";     // recovered anim name; "" = nameless anim
     unsigned int keyExtra = 0;    // action+0x38 (second anim-key dword)
     unsigned int d20 = 0;         // action+0x20
-    unsigned int d24 = 0;         // action+0x24
+    unsigned int d24 = 0;         // action+0x24 (anim variant enum?)
     int loops = 0;                // action+0xAC
     unsigned char a8 = 0, a9 = 0, aa = 0, ab = 0, b0 = 0;
 
     // Machine-local pointers captured for diagnostics / local replay only —
     // never sent over the wire.
     void* localContext = nullptr; // action+0x74
+    void* localKey0 = nullptr;    // action+0x34 raw (name-node ptr or null)
 };
 
 namespace AnimAction
@@ -42,13 +49,15 @@ namespace AnimAction
     bool ClassHasAnimLayout(const char* actionClass);
 
     // Reads the fields out of a live action object, recovering the anim name
-    // from the name-handle. SEH-guarded; false if the name can't be
-    // recovered (e.g. index-only PlayAnimationFromIndex actions).
+    // from the name-handle when one is present (name stays "" for nameless
+    // anims). SEH-guarded; false only if the action memory is unreadable.
     bool Extract(void* action, AnimActionFields& out);
 
-    // Rebuilds the anim-name key (0x99EBF0) and posts a stack-constructed
-    // CCreatureAction_PlayAnimation on the creature via DoCreatureAction.
-    // `context` is the +0x74 context thing (pass nullptr when replaying a
+    // Posts a stack-constructed CCreatureAction_PlayAnimation on the
+    // creature via DoCreatureAction, replaying the captured fields. A named
+    // capture gets its key rebuilt from the name (0x99EBF0); a nameless one
+    // is replayed with an empty key, exactly as the game constructed it.
+    // `context` is the +0x74 context object (pass nullptr when replaying a
     // remote player's action — their pointer is meaningless here).
     // SEH-guarded; false on failure.
     bool Play(CThingPlayerCreature* creature, const AnimActionFields& fields, void* context);
