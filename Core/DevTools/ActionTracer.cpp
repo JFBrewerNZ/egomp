@@ -258,7 +258,11 @@ namespace
         const char* creatureRtti = gotName ? ObjectInspector::GetRttiName(creature) : nullptr;
         bool isPlayer = creatureRtti && strstr(creatureRtti, "PlayerCreature");
 
-        if (isPlayer && strncmp(animName, "ST_BLINK", 8) != 0)
+        // Only purposeful (flag=1) anims are worth replaying — the hero
+        // re-resolves flag=0 idles every few seconds, which would
+        // immediately overwrite the interesting capture (first test replayed
+        // ST_IDLE_SUBTLE instead of the unsheathe because of this).
+        if (isPlayer && flag == 1)
         {
             strcpy_s(g_lastHeroResolveName, animName);
             g_lastHeroResolveFlag = flag;
