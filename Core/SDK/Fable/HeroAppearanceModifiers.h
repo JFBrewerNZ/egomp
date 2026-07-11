@@ -125,6 +125,9 @@ public:
     int GetCarriedMeleeDefIndex();
     int GetCarriedRangedDefIndex();
 
+    // The carried melee weapon CThing itself (holder deref), or nullptr.
+    CThing* GetCarriedMeleeThing();
+
     // Writes the carried-weapon holder (CIntelligentPointer::Assign,
     // 0xA01B90). Pass nullptr to clear. Call RegenerateCarriedWeapons
     // afterwards to rebuild the on-back visuals.

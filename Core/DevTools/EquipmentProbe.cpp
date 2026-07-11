@@ -305,6 +305,21 @@ namespace
         }
     }
 
+    void* GuardedObjectCreateMode(int defIndex, void* pos, int mode, void* name,
+        unsigned long* exceptionCode)
+    {
+        *exceptionCode = 0;
+        __try
+        {
+            return ((void*(__fastcall*)(int, void*, int, int, int, void*))FN_THING_OBJECT_CREATE)(
+                defIndex, pos, mode, 0, 0, name);
+        }
+        __except (*exceptionCode = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
+        {
+            return nullptr;
+        }
+    }
+
     int GuardedPickup(void* creature, void* object, unsigned long* exceptionCode)
     {
         // The action is constructed in a stack buffer at every game call
@@ -589,26 +604,13 @@ namespace EquipmentProbe
 
 namespace
 {
-    // A weapon is safe to place in a carried holder only after the pickup
-    // completed: the object must be alive (+0x91 deleted flag clear) and
-    // carry the equipped-weapon wiring the visual builder dereferences —
-    // the +0x48/+0x4C attachment-marker buffers a fresh factory object
-    // lacks (their absence is the known 0x5C36C2 fault, and equipping an
-    // unwired weapon corrupts carried-visual state: confirmed crash
-    // 2026-07-11 when step 2 ran before the acquire was confirmed).
-    bool IsWeaponWired(CThing* weapon)
-    {
-        if (!ObjectInspector::IsReadableMemory(weapon, 0x94))
-            return false;
-        if (*((const unsigned char*)weapon + 0x91) & 1)
-            return false;
+    // Learned the hard way (2026-07-11): Fable's inventory stores DEF
+    // entries — picking an object up kills the world CThing (+0x91 bit
+    // set), so a picked-up pointer must never go into a carried holder,
+    // and a faulted equip must be undone immediately (a corrupted carried
+    // slot crashes the game on its next own regenerate).
 
-        void* marker48 = *(void* const*)((const char*)weapon + 0x48);
-        void* marker4C = *(void* const*)((const char*)weapon + 0x4C);
-        return marker48 != nullptr && marker4C != nullptr;
-    }
-
-    // SEH-isolated step 2 (no unwindable locals allowed here).
+    // SEH-isolated equip step (no unwindable locals allowed here).
     bool GuardedCarriedEquip(CTCInventoryWeapons* weapons, CThing* weapon,
         unsigned long* exceptionCode)
     {
@@ -628,9 +630,19 @@ namespace
 
 namespace EquipmentProbe
 {
+    // One factory MODE hypothesis per press: create the broadsword with
+    // that mode, assign it to the carried-melee holder, regenerate — the
+    // back-visual builder (0x5C36C2, inside RestoreCarriedWeapons) clones
+    // the weapon internally from its DEF with the def's own mode byte
+    // (+0x90), so the pickup path (dead end: inventory stores defs, the
+    // world thing is killed on pickup) is not needed at all. The right
+    // create-mode should make the source survive the builder's reads.
+    // On any fault the original carried weapon is restored immediately so
+    // the corrupted-carried-state delayed crash can't recur.
     void WeaponEquipProbe(CThingPlayerCreature* creature)
     {
-        static CThing* pendingWeapon = nullptr;
+        static const int MODES[] = { 4, 0, 1, 2, 3, 5 };
+        static size_t modeIndex = 0;
 
         CTCInventoryWeapons* weapons = CTCInventoryWeapons::FromCreature(creature);
         if (!weapons)
@@ -639,44 +651,45 @@ namespace EquipmentProbe
             return;
         }
 
-        char buf[256];
+        char buf[320];
+        int mode = MODES[modeIndex % (sizeof(MODES) / sizeof(MODES[0]))];
+        modeIndex++;
 
-        if (!pendingWeapon)
+        CThing* original = weapons->GetCarriedMeleeThing();
+
+        CCharString defName(PROBE_WEAPON_DEF);
+        int defIndex = CDefinitionManager::Get()->GetDefGlobalIndexFromName(&defName);
+
+        C3DVector pos = *((CThing*)creature)->GetPos();
+        pos.X += 1.0f;
+
+        CCharString emptyName("");
+        unsigned long createException = 0;
+        CThing* fresh = (CThing*)GuardedObjectCreateMode(defIndex, &pos, mode,
+            &emptyName, &createException);
+
+        if (!fresh)
         {
-            CCharString defName(PROBE_WEAPON_DEF);
-            int defIndex = CDefinitionManager::Get()->GetDefGlobalIndexFromName(&defName);
-
-            pendingWeapon = CTCInventoryWeapons::GiveWeapon(creature, defIndex);
-
-            sprintf_s(buf, "[Equip] weapon probe step 1: %s (def %d) created @ %p,"
-                " pickup posted — wait for the acquire popup, then press NUMPAD8 again to equip",
-                PROBE_WEAPON_DEF, defIndex, (void*)pendingWeapon);
+            sprintf_s(buf, "[Equip] weapon probe mode=%d: create FAILED (exception %08lX)",
+                mode, createException);
             ObjectInspector::LogLine(buf);
             return;
         }
 
-        if (!IsWeaponWired(pendingWeapon))
-        {
-            void* m48 = ObjectInspector::IsReadableMemory(pendingWeapon, 0x94)
-                ? *(void**)((char*)pendingWeapon + 0x48) : (void*)~0u;
-            void* m4C = ObjectInspector::IsReadableMemory(pendingWeapon, 0x94)
-                ? *(void**)((char*)pendingWeapon + 0x4C) : (void*)~0u;
+        unsigned long equipException = 0;
+        bool ok = GuardedCarriedEquip(weapons, fresh, &equipException);
 
-            sprintf_s(buf, "[Equip] weapon probe: %p not wired yet (+0x48=%p +0x4C=%p)"
-                " — confirm the acquire popup (left-click) first, then press NUMPAD8 again",
-                (void*)pendingWeapon, m48, m4C);
-            ObjectInspector::LogLine(buf);
-            return;
+        bool restored = false;
+        if (!ok)
+        {
+            unsigned long restoreException = 0;
+            restored = GuardedCarriedEquip(weapons, original, &restoreException);
         }
 
-        unsigned long exceptionCode = 0;
-        bool ok = GuardedCarriedEquip(weapons, pendingWeapon, &exceptionCode);
-
-        sprintf_s(buf, "[Equip] weapon probe step 2: holder := %p + regenerate -> %s"
-            " (exception %08lX) — check the hero's back for the broadsword",
-            (void*)pendingWeapon, ok ? "OK" : "FAULTED", exceptionCode);
+        sprintf_s(buf, "[Equip] weapon probe mode=%d: fresh=%p equip=%s (exception %08lX)%s"
+            " — press again to try the next mode; check the hero's back",
+            mode, (void*)fresh, ok ? "OK" : "FAULTED", equipException,
+            ok ? "" : (restored ? ", original restored" : ", RESTORE FAILED"));
         ObjectInspector::LogLine(buf);
-
-        pendingWeapon = nullptr;
     }
 }

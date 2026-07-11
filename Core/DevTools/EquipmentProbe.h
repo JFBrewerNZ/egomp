@@ -19,11 +19,10 @@ namespace EquipmentProbe
     // visible changes to identify equip/unequip functions.
     void ProbeNextCandidate(CThingPlayerCreature* creature);
 
-    // NUMPAD8: two-step equip-by-def test of the carried-weapon chain.
-    // Press 1: factory-create a broadsword and post the pickup action (the
-    // game wires it as a proper inventory weapon; acquire popup expected).
-    // Press 2: assign it to the carried-melee holder (+0x134) and call
-    // RegenerateCarriedWeapons — success = the broadsword appears on the
-    // hero's back. This is the puppet weapon-visual apply path.
+    // NUMPAD8: one factory-mode hypothesis per press — create a broadsword
+    // with the next candidate mode, assign it to the carried-melee holder
+    // (+0x134) and RegenerateCarriedWeapons; restores the original weapon
+    // on fault. Success = the broadsword appears on the hero's back. This
+    // is the puppet weapon-visual apply path.
     void WeaponEquipProbe(CThingPlayerCreature* creature);
 }

@@ -291,6 +291,12 @@ int CTCInventoryWeapons::GetCarriedRangedDefIndex()
     return CarriedWeaponDefIndex(this, WEAPON_RANGED_HOLDER_OFFSET);
 }
 
+CThing* CTCInventoryWeapons::GetCarriedMeleeThing()
+{
+    void* holder = (char*)this + WEAPON_MELEE_HOLDER_OFFSET;
+    return ((CThing*(__thiscall*)(void*))FN_INTELLIGENT_POINTER_GET)(holder);
+}
+
 void CTCInventoryWeapons::SetCarriedMeleeWeapon(CThing* weapon)
 {
     void* holder = (char*)this + WEAPON_MELEE_HOLDER_OFFSET;
