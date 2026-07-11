@@ -30,9 +30,28 @@ void NetPlayerManager::HandleLocalCreatureAction(void* creature, const char* act
     if (actionType < 0)
         return;
 
-    // Movement direction at action time (world space) — directional moves
-    // like the roll use it so the puppet rolls the way the player did.
-    C3DVector direction = ((CThingPlayerCreature*)localHero)->MovementAcceleration;
+    // Direction candidates at action time. MovementAcceleration falls to ~0
+    // at steady speed, so also grab the facing forward vector; diagnostic
+    // log picks the field that actually reflects the roll direction.
+    C3DVector accel = ((CThingPlayerCreature*)localHero)->MovementAcceleration;
+
+    C3DVector forward = {};
+    CTCPhysicsBase* physicsTC = ((CThing*)localHero)->PhysicsTC;
+    if (physicsTC)
+    {
+        CRightHandedSet* rh = ((CTCPhysicsStandard*)physicsTC)->GetRHSet();
+        if (rh)
+            forward = rh->Forward;
+    }
+
+    std::cout << "[Combat] send action " << actionType
+        << " accel=(" << accel.X << "," << accel.Y << "," << accel.Z << ")"
+        << " forward=(" << forward.X << "," << forward.Y << "," << forward.Z << ")"
+        << std::endl;
+
+    // Send acceleration for now (the roll fix); switch source once the log
+    // shows which field is non-zero on a moving roll.
+    C3DVector direction = accel;
 
     int networkId = localNetPlayer->GetNetworkId();
 
