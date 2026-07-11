@@ -346,11 +346,14 @@ namespace
 {
     // Bypass hooks: while g_gateBypass is set, the inventory gate
     // (0x5BDF08) reports ownership for any def, and the record lookup
-    // (0x5BE8D3) returns a ZEROED dummy record — inventory-less puppets
-    // would otherwise get a garbage end-sentinel whose augmentation
-    // "copies" fault or poison the weapon's combat data.
+    // (0x5BE8D3) returns NULL — CreateCarriedWeapon's own null check
+    // (0x5BE96E) then skips every record copy and the weapon keeps its
+    // def-default combat data, like an NPC's weapon. (Inventory-less
+    // puppets otherwise get a garbage end-sentinel: unmapped -> the
+    // 0x5BE9A5 faults; readable -> poisoned combat data. A ZEROED dummy
+    // record was no better: the copied fields are treated as POINTERS
+    // during unsheathe — nulls crashed the observer.)
     volatile bool g_gateBypass = false;
-    char g_dummyInventoryRecord[0x80] = {};
 
     int(__fastcall* OInventoryGate)(void* weaponsTC, void* edx, int defIndex) = nullptr;
     void*(__fastcall* OInventoryRecordLookup)(void* weaponsTC, void* edx, int defIndex) = nullptr;
@@ -366,10 +369,7 @@ namespace
     void* __fastcall HInventoryRecordLookup(void* weaponsTC, void* edx, int defIndex)
     {
         if (g_gateBypass)
-        {
-            memset(g_dummyInventoryRecord, 0, sizeof(g_dummyInventoryRecord));
-            return g_dummyInventoryRecord;
-        }
+            return nullptr;
 
         return OInventoryRecordLookup(weaponsTC, edx, defIndex);
     }
