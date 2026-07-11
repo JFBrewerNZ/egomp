@@ -25,6 +25,9 @@ namespace ObjectInspector
     // timestamped block. Does not print to the console.
     void AppendToLogFile(const std::string& report);
 
+    // Print one line to the console AND append it to EgoMP-inspect.log.
+    void LogLine(const char* line);
+
     void Dump(const char* label, const void* object, size_t bytes);
 
     // Every dword of a buffer: index, hex value, RTTI class if it points at

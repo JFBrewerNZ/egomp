@@ -7,6 +7,7 @@
 #include "../../../Config/Config.h"
 #include "../../../DevTools/ObjectInspector.h"
 #include "../../../DevTools/EquipmentProbe.h"
+#include "../../../DevTools/ActionTracer.h"
 
 // Delay before the first automatic connect after entering the world, and
 // between retries while unconnected.
@@ -112,6 +113,7 @@ void NetMainGameComponent::Options()
     {
         std::cout << "[EgoMP] NUMPAD5/6/7: inspect hero / raw TC list / inventory TCs (debug)" << std::endl;
         std::cout << "[EgoMP] NUMPAD8: log worn equipment; NUMPAD9: probe next equip-fn candidate (debug)" << std::endl;
+        std::cout << "[EgoMP] NUMPAD0: toggle live action/combat tracer (debug)" << std::endl;
     }
 }
 
@@ -125,6 +127,14 @@ void NetMainGameComponent::HandleDebugKeys()
 {
     if (!Config::Get().debugKeys || !worldReady)
         return;
+
+    if (GetAsyncKeyState(VK_NUMPAD0) & 1)
+    {
+        ActionTracer::Install();
+        ActionTracer::SetEnabled(!ActionTracer::IsEnabled());
+        std::cout << "[EgoMP] Action tracer " << (ActionTracer::IsEnabled() ? "ON" : "OFF")
+            << " - play to log creature actions (wield/attack/roll/block/cast)" << std::endl;
+    }
 
     bool inspectCreature = (GetAsyncKeyState(VK_NUMPAD5) & 1) != 0;
     bool inspectTcList = (GetAsyncKeyState(VK_NUMPAD6) & 1) != 0;

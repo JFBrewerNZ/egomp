@@ -146,6 +146,7 @@
   <ItemGroup>
     <ClInclude Include="Config\Config.h" />
     <ClInclude Include="DevTools\EquipmentProbe.h" />
+    <ClInclude Include="DevTools\ActionTracer.h" />
     <ClInclude Include="DevTools\ObjectInspector.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="Multiplayer\Fable\NetMainGameComponent\NetMainGameComponent.h" />
@@ -189,6 +190,7 @@
   <ItemGroup>
     <ClCompile Include="Config\Config.cpp" />
     <ClCompile Include="DevTools\EquipmentProbe.cpp" />
+    <ClCompile Include="DevTools\ActionTracer.cpp" />
     <ClCompile Include="DevTools\ObjectInspector.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="Multiplayer\Fable\NetMainGameComponent\NetMainGameComponent.cpp" />

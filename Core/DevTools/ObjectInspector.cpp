@@ -109,6 +109,12 @@ namespace ObjectInspector
         WriteLogFile(report);
     }
 
+    void LogLine(const char* line)
+    {
+        std::cout << line << std::endl;
+        WriteLogFile(line);
+    }
+
     const char* GetRttiName(const void* object)
     {
         if (!IsReadable(object, sizeof(void*)))
