@@ -5,6 +5,7 @@
 #include <MinHook/include/MinHook.h>
 
 #include <string>
+#include <set>
 
 namespace
 {
@@ -16,6 +17,11 @@ namespace
     // Suppress consecutive duplicates so a held-down action (e.g. running)
     // doesn't flood the log.
     std::string g_lastLine;
+
+    // Each hero action class is structure-dumped once per session so the
+    // parameter layout (weapon refs, directions, anim ids) is captured
+    // without flooding the log.
+    std::set<std::string> g_dumpedClasses;
 
     // __thiscall(creature, action*) — trampoline uses the __fastcall(ecx,edx)
     // ABI to receive `this` in ecx and the action pointer as the stack arg.
@@ -56,6 +62,16 @@ namespace
             {
                 g_lastLine = line;
                 ObjectInspector::LogLine(line);
+            }
+
+            // First time we see each action class on the player hero, dump
+            // its structure so its parameters can be mapped for replication.
+            if (creatureRtti && strstr(creatureRtti, "PlayerCreature")
+                && actionRtti && g_dumpedClasses.insert(actionName).second)
+            {
+                char label[160];
+                sprintf_s(label, "action params: %s", actionName);
+                ObjectInspector::Dump(label, action, 0x60);
             }
         }
 
