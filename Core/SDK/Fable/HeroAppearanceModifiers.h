@@ -109,3 +109,21 @@ public:
     bool GetExperienceSpentOn(HeroStatsExperience& out);
     void SetExperienceSpentOn(const HeroStatsExperience& values);
 };
+
+// CTCInventoryWeapons — the hero's weapons component (thing-component id
+// 0x13). Carried-weapon def-holders are CIntelligentPointers at +0x134
+// (melee) / +0x148 (ranged); accessor 0xA01B50 dereferences them.
+class CTCInventoryWeapons
+{
+public:
+    static CTCInventoryWeapons* FromCreature(CThingPlayerCreature* creature);
+
+    // Global def index of the carried melee / ranged weapon, or -1.
+    int GetCarriedMeleeDefIndex();
+    int GetCarriedRangedDefIndex();
+
+    // Creates a weapon object from a def index next to the creature and
+    // posts a pickup action so the creature acquires it (a weaponless hero
+    // auto-equips it onto the back). Guarded; a bad def is a no-op.
+    static void GiveWeapon(CThingPlayerCreature* creature, int defGlobalIndex);
+};

@@ -347,6 +347,11 @@ void NetMainGameComponent::SetupNetworkCallbacks()
         for (int& value : exp.spentOn)
             bs.Read(value);
 
+        int meleeWeaponDef = -1;
+        int rangedWeaponDef = -1;
+        bs.Read(meleeWeaponDef);
+        bs.Read(rangedWeaponDef);
+
         bs.Read(count);
 
         if (count < 0 || count > 256)
@@ -362,7 +367,7 @@ void NetMainGameComponent::SetupNetworkCallbacks()
             modifierDefIndexes.push_back(defIndex);
         }
 
-        netPlayerManager->ReceiveNetPlayerAppearance(networkId, morph, exp, std::move(modifierDefIndexes));
+        netPlayerManager->ReceiveNetPlayerAppearance(networkId, morph, exp, meleeWeaponDef, rangedWeaponDef, std::move(modifierDefIndexes));
     });
     network->AddDestroyLocalNetPlayerCallback("DestroyLocalNetPlayer", [this]() {
         netPlayerManager->DestroyLocalNetPlayer();

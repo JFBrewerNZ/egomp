@@ -11,6 +11,7 @@ static const unsigned long long APPEARANCE_CHECK_INTERVAL_MS = 1000;
 
 static void WriteAppearance(SLNet::BitStream& bs, int networkId,
     const HeroMorphValues& morph, const HeroStatsExperience& exp,
+    int meleeWeaponDef, int rangedWeaponDef,
     const std::vector<int>& modifierDefIndexes)
 {
     bs.Write((SLNet::MessageID)ID_PLAYER_APPEARANCE);
@@ -19,6 +20,8 @@ static void WriteAppearance(SLNet::BitStream& bs, int networkId,
         bs.Write(value);
     for (int value : exp.spentOn)
         bs.Write(value);
+    bs.Write(meleeWeaponDef);
+    bs.Write(rangedWeaponDef);
     bs.Write((int)modifierDefIndexes.size());
     for (int defIndex : modifierDefIndexes)
         bs.Write(defIndex);
@@ -65,23 +68,35 @@ void NetPlayerManager::UpdateAppearanceSync()
     if (currentModifiers.empty() || !stats->GetExperienceSpentOn(currentExp))
         return;
 
+    int meleeDef = -1;
+    int rangedDef = -1;
+    if (CTCInventoryWeapons* weapons = CTCInventoryWeapons::FromCreature(creature))
+    {
+        meleeDef = weapons->GetCarriedMeleeDefIndex();
+        rangedDef = weapons->GetCarriedRangedDefIndex();
+    }
+
     if (currentModifiers == lastSentAppearance && currentMorph == lastSentMorph
-        && currentExp == lastSentExperience)
+        && currentExp == lastSentExperience
+        && meleeDef == lastSentMeleeWeaponDef && rangedDef == lastSentRangedWeaponDef)
         return;
 
-    BroadcastLocalNetPlayerAppearance(currentMorph, currentExp, currentModifiers);
+    BroadcastLocalNetPlayerAppearance(currentMorph, currentExp, meleeDef, rangedDef, currentModifiers);
     lastSentAppearance = std::move(currentModifiers);
     lastSentMorph = currentMorph;
     lastSentExperience = currentExp;
+    lastSentMeleeWeaponDef = meleeDef;
+    lastSentRangedWeaponDef = rangedDef;
 }
 
 void NetPlayerManager::BroadcastLocalNetPlayerAppearance(const HeroMorphValues& morph,
-    const HeroStatsExperience& exp, const std::vector<int>& modifierDefIndexes)
+    const HeroStatsExperience& exp, int meleeWeaponDef, int rangedWeaponDef,
+    const std::vector<int>& modifierDefIndexes)
 {
     int networkId = localNetPlayer->GetNetworkId();
 
     SLNet::BitStream bs;
-    WriteAppearance(bs, networkId, morph, exp, modifierDefIndexes);
+    WriteAppearance(bs, networkId, morph, exp, meleeWeaponDef, rangedWeaponDef, modifierDefIndexes);
 
     if (networkId == 0)
         network->SendToAllClients((const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
@@ -93,12 +108,13 @@ void NetPlayerManager::BroadcastLocalNetPlayerAppearance(const HeroMorphValues& 
 }
 
 void NetPlayerManager::ReceiveNetPlayerAppearance(int networkId,
-    HeroMorphValues morph, HeroStatsExperience exp, std::vector<int> modifierDefIndexes)
+    HeroMorphValues morph, HeroStatsExperience exp,
+    int meleeWeaponDef, int rangedWeaponDef, std::vector<int> modifierDefIndexes)
 {
     if (localNetPlayer && localNetPlayer->GetNetworkId() == 0)
     {
         SLNet::BitStream bs;
-        WriteAppearance(bs, networkId, morph, exp, modifierDefIndexes);
+        WriteAppearance(bs, networkId, morph, exp, meleeWeaponDef, rangedWeaponDef, modifierDefIndexes);
 
         network->SendToAllClientsExcept(networkId, (const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
     }
@@ -111,6 +127,7 @@ void NetPlayerManager::ReceiveNetPlayerAppearance(int networkId,
     netPlayer->SetAppearance(std::move(modifierDefIndexes));
     netPlayer->SetMorphValues(morph);
     netPlayer->SetStatsExperience(exp);
+    netPlayer->SetWeaponDefs(meleeWeaponDef, rangedWeaponDef);
 
     if (netPlayer->IsSpawned())
         ApplyNetPlayerAppearance(*netPlayer);
@@ -157,6 +174,33 @@ void NetPlayerManager::ApplyNetPlayerAppearance(NetPlayer& netPlayer)
     for (int defIndex : wanted)
         appearance->AddModifier(defIndex);
     appearance->RebuildAttachments();
+
+    ApplyNetPlayerWeapons(netPlayer);
+}
+
+void NetPlayerManager::ApplyNetPlayerWeapons(NetPlayer& netPlayer)
+{
+    // Give the puppet its carried weapons once per distinct def — a
+    // freshly-spawned (weaponless) hero auto-equips its first weapon onto
+    // the back. Re-giving would drop duplicate swords, so track what was
+    // applied.
+    int melee = netPlayer.GetMeleeWeaponDef();
+    int ranged = netPlayer.GetRangedWeaponDef();
+
+    if (melee == netPlayer.GetAppliedMeleeWeaponDef()
+        && ranged == netPlayer.GetAppliedRangedWeaponDef())
+        return;
+
+    CThingPlayerCreature* creature = GetCreatureFromNetworkId(netPlayer.GetNetworkId());
+    if (!creature)
+        return;
+
+    if (melee >= 0 && melee != netPlayer.GetAppliedMeleeWeaponDef())
+        CTCInventoryWeapons::GiveWeapon(creature, melee);
+    if (ranged >= 0 && ranged != netPlayer.GetAppliedRangedWeaponDef())
+        CTCInventoryWeapons::GiveWeapon(creature, ranged);
+
+    netPlayer.SetAppliedWeaponDefs(melee, ranged);
 }
 
 void NetPlayerManager::SendNetPlayerAppearancesTo(int networkId)
@@ -166,7 +210,7 @@ void NetPlayerManager::SendNetPlayerAppearancesTo(int networkId)
     {
         SLNet::BitStream bs;
         WriteAppearance(bs, localNetPlayer->GetNetworkId(), lastSentMorph,
-            lastSentExperience, lastSentAppearance);
+            lastSentExperience, lastSentMeleeWeaponDef, lastSentRangedWeaponDef, lastSentAppearance);
 
         network->SendToClient(networkId, (const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
     }
@@ -179,7 +223,8 @@ void NetPlayerManager::SendNetPlayerAppearancesTo(int networkId)
 
         SLNet::BitStream bs;
         WriteAppearance(bs, netPlayer->GetNetworkId(), netPlayer->GetMorphValues(),
-            netPlayer->GetStatsExperience(), netPlayer->GetAppearance());
+            netPlayer->GetStatsExperience(), netPlayer->GetMeleeWeaponDef(),
+            netPlayer->GetRangedWeaponDef(), netPlayer->GetAppearance());
 
         network->SendToClient(networkId, (const char*)bs.GetData(), bs.GetNumberOfBytesUsed());
     }

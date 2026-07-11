@@ -40,6 +40,8 @@ struct PlayerState
     std::vector<int> appearance; // appearance-modifier def indexes
     unsigned int morph[9] = {};  // raw CTCHeroMorph blob (+0x40..+0x63)
     int statsExp[12] = {};       // experience spent per stat (drives physique)
+    int meleeWeaponDef = -1;
+    int rangedWeaponDef = -1;
     bool hasAppearance = false;
     bool announced = false; // true once the client has sent ID_CREATE_NET_PLAYER
 };
@@ -240,6 +242,8 @@ private:
                     looks.Write(value);
                 for (int value : pair.second.statsExp)
                     looks.Write(value);
+                looks.Write(pair.second.meleeWeaponDef);
+                looks.Write(pair.second.rangedWeaponDef);
                 looks.Write((int)pair.second.appearance.size());
                 for (int defIndex : pair.second.appearance)
                     looks.Write(defIndex);
@@ -341,6 +345,9 @@ private:
             in.Read(value);
         for (int& value : statsExp)
             in.Read(value);
+        int meleeWeaponDef = -1, rangedWeaponDef = -1;
+        in.Read(meleeWeaponDef);
+        in.Read(rangedWeaponDef);
         in.Read(count);
 
         int senderId = GetNetworkIdFromAddress(packet->systemAddress);
@@ -364,6 +371,8 @@ private:
             state.morph[i] = morph[i];
         for (int i = 0; i < 12; i++)
             state.statsExp[i] = statsExp[i];
+        state.meleeWeaponDef = meleeWeaponDef;
+        state.rangedWeaponDef = rangedWeaponDef;
         state.hasAppearance = true;
 
         SendToAnnouncedExcept(senderId, packet, HIGH_PRIORITY, RELIABLE_ORDERED);

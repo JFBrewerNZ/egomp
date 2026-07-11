@@ -1,11 +1,31 @@
 #include "HeroAppearanceModifiers.h"
 
+#include <windows.h>
+
+#include "Thing.h"
+#include "3DVector.h"
+#include "CharString.h"
+#include "DefString.h"
+#include "DefStringTable.h"
+#include "DefinitionManager.h"
+
 namespace
 {
     const size_t TC_LIST_OFFSET = 0x44;
     const int TC_ID_HERO_ATTACHABLE_APPEARANCE = 0x5E;
     const int TC_ID_HERO_MORPH = 0x03;
     const int TC_ID_HERO_STATS = 0x04;
+    const int TC_ID_INVENTORY_WEAPONS = 0x13;
+
+    // Carried-weapon def-holders (CIntelligentPointer) + accessor.
+    const size_t WEAPON_MELEE_HOLDER_OFFSET = 0x134;
+    const size_t WEAPON_RANGED_HOLDER_OFFSET = 0x148;
+    const uintptr_t FN_INTELLIGENT_POINTER_GET = 0xA01B50;
+
+    // Object factory + pickup action (see RE-NOTES.md / EquipmentProbe).
+    const uintptr_t FN_THING_OBJECT_CREATE = 0x703210;
+    const uintptr_t FN_ACTION_ADD_REAL_OBJECT_CTOR = 0x7EB2D0;
+    const uintptr_t FN_DO_CREATURE_ACTION = 0x6644F0;
 
     const size_t MORPH_BLOB_OFFSET = 0x40;
     const size_t MORPH_DIRTY_FLAG_OFFSET = 0x3D;
@@ -194,4 +214,85 @@ void CTCHeroStats::SetExperienceSpentOn(const HeroStatsExperience& values)
 
     for (size_t i = 0; i < HERO_STAT_EXPERIENCE_COUNT; i++)
         buffer[i] = values.spentOn[i];
+}
+
+namespace
+{
+    bool IsReadable(const void* p, size_t bytes)
+    {
+        if (!p)
+            return false;
+        MEMORY_BASIC_INFORMATION mbi = {};
+        if (!VirtualQuery(p, &mbi, sizeof(mbi)) || mbi.State != MEM_COMMIT)
+            return false;
+        if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))
+            return false;
+        return (uintptr_t)p + bytes <= (uintptr_t)mbi.BaseAddress + mbi.RegionSize;
+    }
+
+    int DefIndexOfThing(CThing* thing)
+    {
+        if (!IsReadable(thing, 0x94))
+            return -1;
+
+        CDefString def{};
+        CCharString name("");
+        thing->GetDefName(&def);
+        CDefStringTable::Get()->GetString(&name, def.TablePos);
+
+        const char* chars = name.GetAsCharArray();
+        if (!chars || !*chars)
+            return -1;
+
+        return CDefinitionManager::Get()->GetDefGlobalIndexFromName(&name);
+    }
+
+    int CarriedWeaponDefIndex(void* weaponsTC, size_t holderOffset)
+    {
+        void* holder = (char*)weaponsTC + holderOffset;
+        CThing* weapon = ((CThing*(__thiscall*)(void*))FN_INTELLIGENT_POINTER_GET)(holder);
+        return DefIndexOfThing(weapon);
+    }
+}
+
+CTCInventoryWeapons* CTCInventoryWeapons::FromCreature(CThingPlayerCreature* creature)
+{
+    return (CTCInventoryWeapons*)FindThingComponent(creature, TC_ID_INVENTORY_WEAPONS);
+}
+
+int CTCInventoryWeapons::GetCarriedMeleeDefIndex()
+{
+    return CarriedWeaponDefIndex(this, WEAPON_MELEE_HOLDER_OFFSET);
+}
+
+int CTCInventoryWeapons::GetCarriedRangedDefIndex()
+{
+    return CarriedWeaponDefIndex(this, WEAPON_RANGED_HOLDER_OFFSET);
+}
+
+void CTCInventoryWeapons::GiveWeapon(CThingPlayerCreature* creature, int defGlobalIndex)
+{
+    if (defGlobalIndex < 0 || !creature)
+        return;
+
+    __try
+    {
+        C3DVector pos = *((CThing*)creature)->GetPos();
+        pos.X += 1.0f;
+
+        CCharString emptyName("");
+        void* object = ((void*(__fastcall*)(int, void*, int, int, int, void*))FN_THING_OBJECT_CREATE)(
+            defGlobalIndex, &pos, 4, 0, 0, &emptyName);
+
+        if (!object)
+            return;
+
+        static char actionBuffer[0x200];
+        void* action = ((void*(__thiscall*)(void*, void*, void*))FN_ACTION_ADD_REAL_OBJECT_CTOR)(
+            actionBuffer, creature, object);
+        ((int(__thiscall*)(void*, void*))FN_DO_CREATURE_ACTION)(creature, action);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+    }
 }

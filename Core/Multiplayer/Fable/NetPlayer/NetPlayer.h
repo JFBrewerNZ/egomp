@@ -27,6 +27,11 @@ private:
     HeroStatsExperience statsExperience;
     bool hasMorphValues = false;
 
+    int meleeWeaponDef = -1;
+    int rangedWeaponDef = -1;
+    int appliedMeleeWeaponDef = -1;  // last def actually given to the creature
+    int appliedRangedWeaponDef = -1;
+
 public:
     NetPlayer();
     ~NetPlayer() = default;
@@ -63,4 +68,12 @@ public:
 
     void SetStatsExperience(const HeroStatsExperience& values) { statsExperience = values; }
     const HeroStatsExperience& GetStatsExperience() const { return statsExperience; }
+
+    void SetWeaponDefs(int melee, int ranged) { meleeWeaponDef = melee; rangedWeaponDef = ranged; }
+    int GetMeleeWeaponDef() const { return meleeWeaponDef; }
+    int GetRangedWeaponDef() const { return rangedWeaponDef; }
+
+    int GetAppliedMeleeWeaponDef() const { return appliedMeleeWeaponDef; }
+    int GetAppliedRangedWeaponDef() const { return appliedRangedWeaponDef; }
+    void SetAppliedWeaponDefs(int melee, int ranged) { appliedMeleeWeaponDef = melee; appliedRangedWeaponDef = ranged; }
 };

@@ -4,7 +4,7 @@
 
 // Bumped whenever a payload changes shape; mismatching peers are rejected
 // at ID_CONNECTION_NOTIFICATION.
-const int EGOMP_PROTOCOL_VERSION = 6;
+const int EGOMP_PROTOCOL_VERSION = 7;
 
 // Every payload is prefixed with its [uint8 messageId].
 // "host" below means the session authority: either a hosting player (P2P)
@@ -47,6 +47,7 @@ enum NetworkMessages
 
     // sender -> host -> other clients:
     // [int networkId][9 x uint32 morph blob][12 x int expSpentOn]
+    // [int meleeWeaponDef][int rangedWeaponDef]
     // [int count][count x int modifierDefGlobalIndex]
     // The sender's raw CTCHeroMorph body-shape block (+0x40..+0x63:
     // strength/will/skill/age/morality/fatness/tan/teenager), per-stat
