@@ -156,10 +156,21 @@ public:
     void SetCarriedMeleeWeapon(CThing* weapon);
     void SetCarriedRangedWeapon(CThing* weapon);
 
-    // 0x5C9962: rebuilds (or clears, depending on the creature's sheathed
-    // mode) the carried-weapon back visuals from the holders — the save-
-    // load restore path.
+    // 0x5C9962: rebuilds (or clears!) the carried-weapon back visuals from
+    // the holders. Which branch runs depends on the creature having mode
+    // 0x29 AND its CTCHero component's +0xC byte set — a fresh puppet has
+    // it clear, so this took the CLEAR path on puppets (first LAN test:
+    // weapons applied, nothing visible).
     void RegenerateCarriedWeapons();
+
+    // 0x5C8101: the BUILD branch directly (RestoreCarriedWeapons) — always
+    // constructs the back visuals from the holders, no flag check.
+    void RestoreCarriedVisuals();
+
+    // Sets the CTCHero (+0xC) weapons-visible byte so the game's own
+    // regenerations (sheathe/unsheathe reconciler) keep the back visuals
+    // instead of clearing them. False if the creature has no CTCHero.
+    static bool SetCarriedWeaponsVisibleFlag(CThingPlayerCreature* creature);
 
     // Creates a weapon object from a def index next to the creature and
     // posts a pickup action so the creature acquires it. Returns the

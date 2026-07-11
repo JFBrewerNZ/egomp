@@ -180,13 +180,40 @@ void NetPlayerManager::ApplyNetPlayerAppearance(NetPlayer& netPlayer)
     appearance->RebuildAttachments();
 }
 
+namespace
+{
+    // SEH-isolated holster + visual build (no unwindable locals).
+    bool GuardedHolsterAndRestore(CTCInventoryWeapons* weapons,
+        CThing* melee, CThing* ranged, unsigned long* exceptionCode)
+    {
+        *exceptionCode = 0;
+        __try
+        {
+            if (melee)
+                weapons->SetCarriedMeleeWeapon(melee);
+            if (ranged)
+                weapons->SetCarriedRangedWeapon(ranged);
+
+            // The build branch directly: RegenerateCarriedWeapons routes to
+            // the CLEAR path on puppets (their CTCHero weapons-visible byte
+            // starts unset — first LAN test applied weapons invisibly).
+            weapons->RestoreCarriedVisuals();
+            return true;
+        }
+        __except (*exceptionCode = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
+        {
+            return false;
+        }
+    }
+}
+
 void NetPlayerManager::ApplyNetPlayerWeapons(NetPlayer& netPlayer)
 {
     // The game's own equip path, hero-verified 2026-07-11: create a wired
     // carried weapon from the def (inventory gate forced open — puppets
     // have no inventory records; that path just skips the augmentation
-    // copies), holster it, regenerate the back visuals. Silent — no
-    // popups, no pickups.
+    // copies), holster it, build the back visuals. Silent — no popups,
+    // no pickups.
     if (!netPlayer.IsSpawned())
         return;
 
@@ -205,36 +232,35 @@ void NetPlayerManager::ApplyNetPlayerWeapons(NetPlayer& netPlayer)
     if (!weapons)
         return;
 
-    bool changed = false;
+    // Keep the game's own regenerations (sheathe/unsheathe reconciler) on
+    // the build path for this puppet from now on.
+    bool flagSet = CTCInventoryWeapons::SetCarriedWeaponsVisibleFlag(creature);
+
+    CThing* meleeWeapon = nullptr;
+    CThing* rangedWeapon = nullptr;
 
     if (melee > 0 && melee != netPlayer.GetAppliedMeleeWeaponDef())
-    {
-        if (CThing* weapon = weapons->CreateCarriedWeaponUnchecked(melee))
-        {
-            weapons->SetCarriedMeleeWeapon(weapon);
-            changed = true;
-        }
-    }
+        meleeWeapon = weapons->CreateCarriedWeaponUnchecked(melee);
 
     if (ranged > 0 && ranged != netPlayer.GetAppliedRangedWeaponDef())
-    {
-        if (CThing* weapon = weapons->CreateCarriedWeaponUnchecked(ranged))
-        {
-            weapons->SetCarriedRangedWeapon(weapon);
-            changed = true;
-        }
-    }
+        rangedWeapon = weapons->CreateCarriedWeaponUnchecked(ranged);
 
-    if (changed)
-        weapons->RegenerateCarriedWeapons();
+    unsigned long exceptionCode = 0;
+    bool ok = (meleeWeapon || rangedWeapon)
+        && GuardedHolsterAndRestore(weapons, meleeWeapon, rangedWeapon, &exceptionCode);
 
     // Marked applied even on failure so change-driven re-broadcasts don't
     // recreate weapon objects endlessly; a respawn resets and retries.
     netPlayer.SetAppliedWeaponDefs(melee, ranged);
 
     std::cout << "[NetPlayerManager] Player " << netPlayer.GetNetworkId()
-        << " weapons applied (melee def " << melee << ", ranged def " << ranged
-        << (changed ? ")" : ", no visual change)") << std::endl;
+        << " weapons: melee def " << melee << " (" << (meleeWeapon ? "created" : "-")
+        << "), ranged def " << ranged << " (" << (rangedWeapon ? "created" : "-")
+        << "), heroFlag " << (flagSet ? "set" : "MISSING")
+        << ", visuals " << (ok ? "restored" : "FAILED");
+    if (exceptionCode)
+        std::cout << " (exception " << std::hex << exceptionCode << std::dec << ")";
+    std::cout << std::endl;
 }
 
 void NetPlayerManager::SendNetPlayerAppearancesTo(int networkId)

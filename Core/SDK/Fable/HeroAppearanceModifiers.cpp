@@ -38,6 +38,12 @@ namespace
     const uintptr_t FN_CREATE_CARRIED_WEAPON = 0x5BE8F3;
     const uintptr_t FN_INVENTORY_WEAPON_GATE = 0x5BDF08;
 
+    // RestoreCarriedWeapons — the build branch RegenerateCarriedWeapons
+    // takes when the CTCHero +0xC weapons-visible byte is set.
+    const uintptr_t FN_RESTORE_CARRIED_WEAPONS = 0x5C8101;
+    const int TC_ID_HERO = 0x29;
+    const size_t HERO_TC_WEAPONS_VISIBLE_OFFSET = 0xC;
+
     // Object factory + pickup action (see RE-NOTES.md / EquipmentProbe).
     const uintptr_t FN_THING_OBJECT_CREATE = 0x703210;
     const uintptr_t FN_ACTION_ADD_REAL_OBJECT_CTOR = 0x7EB2D0;
@@ -402,6 +408,21 @@ void CTCInventoryWeapons::SetCarriedRangedWeapon(CThing* weapon)
 void CTCInventoryWeapons::RegenerateCarriedWeapons()
 {
     ((void(__thiscall*)(void*))FN_REGENERATE_CARRIED_WEAPONS)(this);
+}
+
+void CTCInventoryWeapons::RestoreCarriedVisuals()
+{
+    ((void(__thiscall*)(void*))FN_RESTORE_CARRIED_WEAPONS)(this);
+}
+
+bool CTCInventoryWeapons::SetCarriedWeaponsVisibleFlag(CThingPlayerCreature* creature)
+{
+    char* heroTC = (char*)FindThingComponent(creature, TC_ID_HERO);
+    if (!heroTC)
+        return false;
+
+    heroTC[HERO_TC_WEAPONS_VISIBLE_OFFSET] = 1;
+    return true;
 }
 
 namespace CombatActions
