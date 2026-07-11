@@ -238,29 +238,39 @@ void NetPlayerManager::ApplyNetPlayerWeapons(NetPlayer& netPlayer)
 
     CThing* meleeWeapon = nullptr;
     CThing* rangedWeapon = nullptr;
+    unsigned long meleeException = 0;
+    unsigned long rangedException = 0;
 
-    if (melee > 0 && melee != netPlayer.GetAppliedMeleeWeaponDef())
-        meleeWeapon = weapons->CreateCarriedWeaponUnchecked(melee);
+    bool meleeWanted = melee > 0 && melee != netPlayer.GetAppliedMeleeWeaponDef();
+    bool rangedWanted = ranged > 0 && ranged != netPlayer.GetAppliedRangedWeaponDef();
 
-    if (ranged > 0 && ranged != netPlayer.GetAppliedRangedWeaponDef())
-        rangedWeapon = weapons->CreateCarriedWeaponUnchecked(ranged);
+    if (meleeWanted)
+        meleeWeapon = weapons->CreateCarriedWeaponUnchecked(melee, &meleeException);
 
-    unsigned long exceptionCode = 0;
+    if (rangedWanted)
+        rangedWeapon = weapons->CreateCarriedWeaponUnchecked(ranged, &rangedException);
+
+    unsigned long restoreException = 0;
     bool ok = (meleeWeapon || rangedWeapon)
-        && GuardedHolsterAndRestore(weapons, meleeWeapon, rangedWeapon, &exceptionCode);
+        && GuardedHolsterAndRestore(weapons, meleeWeapon, rangedWeapon, &restoreException);
 
-    // Marked applied even on failure so change-driven re-broadcasts don't
-    // recreate weapon objects endlessly; a respawn resets and retries.
-    netPlayer.SetAppliedWeaponDefs(melee, ranged);
+    // Per-slot tracking: a slot whose create failed stays unapplied so the
+    // periodic retry (UpdateCombat) attempts it again; a created weapon is
+    // marked even if the visual build failed (its object exists — retrying
+    // would leak more).
+    int newAppliedMelee = (meleeWeapon || !meleeWanted) ? melee : netPlayer.GetAppliedMeleeWeaponDef();
+    int newAppliedRanged = (rangedWeapon || !rangedWanted) ? ranged : netPlayer.GetAppliedRangedWeaponDef();
+    netPlayer.SetAppliedWeaponDefs(newAppliedMelee, newAppliedRanged);
 
-    std::cout << "[NetPlayerManager] Player " << netPlayer.GetNetworkId()
-        << " weapons: melee def " << melee << " (" << (meleeWeapon ? "created" : "-")
-        << "), ranged def " << ranged << " (" << (rangedWeapon ? "created" : "-")
-        << "), heroFlag " << (flagSet ? "set" : "MISSING")
-        << ", visuals " << (ok ? "restored" : "FAILED");
-    if (exceptionCode)
-        std::cout << " (exception " << std::hex << exceptionCode << std::dec << ")";
-    std::cout << std::endl;
+    char line[320];
+    sprintf_s(line, "[NetPlayerManager] Player %d weapons: melee %d (%s%s%08lX),"
+        " ranged %d (%s%s%08lX), heroFlag %s, visuals %s (exc %08lX)",
+        netPlayer.GetNetworkId(),
+        melee, meleeWeapon ? "created" : "-", meleeException ? " exc " : " ", meleeException,
+        ranged, rangedWeapon ? "created" : "-", rangedException ? " exc " : " ", rangedException,
+        flagSet ? "set" : "MISSING",
+        ok ? "restored" : "skipped/FAILED", restoreException);
+    std::cout << line << std::endl;
 }
 
 void NetPlayerManager::SendNetPlayerAppearancesTo(int networkId)

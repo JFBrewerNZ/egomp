@@ -49,6 +49,10 @@ static int CombatActionTypeForClass(const char* actionClass)
         return (int)CombatActionType::Roll;
     if (std::strstr(actionClass, "StartBlocking"))
         return (int)CombatActionType::Block;
+    if (std::strstr(actionClass, "UnsheatheItemFromInventory"))
+        return (int)CombatActionType::Unsheathe;
+    if (std::strstr(actionClass, "SheatheItemToInventory"))
+        return (int)CombatActionType::Sheathe;
 
     return -1;
 }
@@ -163,6 +167,14 @@ void NetPlayerManager::HandleLocalAnimResolve(void* creature, const char* animNa
     if (flag != 1)
         return;
 
+    // Sheathe/unsheathe are replicated as full ACTIONS now (they attach
+    // the weapon model to the hand); mirroring their anims as well would
+    // double-play them.
+    if (std::strncmp(animName, "ST_UNSHEATHE", 12) == 0
+        || std::strncmp(animName, "ST_SHEATHE", 10) == 0
+        || std::strncmp(animName, "ST_ABILITY_FAST_SHEATHE", 23) == 0)
+        return;
+
     CThingPlayerCreature* localHero = GetCreatureFromLocalId(localNetPlayer->GetLocalId());
     if (!localHero || creature != localHero)
         return;
@@ -235,6 +247,9 @@ void NetPlayerManager::ReceiveNetPlayerAnim(int networkId, const AnimActionField
     AnimAction::Play(creature, fields, context);
 }
 
+// Retry cadence for weapon slots whose creation failed.
+static const unsigned long long WEAPON_RETRY_INTERVAL_MS = 3000;
+
 void NetPlayerManager::UpdateCombat()
 {
     unsigned long long now = GetTickCount64();
@@ -243,6 +258,15 @@ void NetPlayerManager::UpdateCombat()
     {
         if (!netPlayer || !netPlayer->IsSpawned())
             continue;
+
+        // Weapon slots that failed to create stay unapplied; retry them.
+        if ((netPlayer->GetMeleeWeaponDef() != netPlayer->GetAppliedMeleeWeaponDef()
+                || netPlayer->GetRangedWeaponDef() != netPlayer->GetAppliedRangedWeaponDef())
+            && now - netPlayer->GetLastWeaponRetryMs() >= WEAPON_RETRY_INTERVAL_MS)
+        {
+            netPlayer->SetLastWeaponRetryMs(now);
+            ApplyNetPlayerWeapons(*netPlayer);
+        }
 
         if (now >= netPlayer->GetBlockActiveUntilMs())
             continue;

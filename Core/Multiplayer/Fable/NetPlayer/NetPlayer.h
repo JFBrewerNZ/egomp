@@ -37,6 +37,10 @@ private:
     unsigned long long blockActiveUntilMs = 0;
     unsigned long long lastBlockPostMs = 0;
 
+    // Throttles the periodic weapon-apply retry for slots whose creation
+    // failed (their applied def stays stale until a retry succeeds).
+    unsigned long long lastWeaponRetryMs = 0;
+
 public:
     NetPlayer();
     ~NetPlayer() = default;
@@ -86,4 +90,7 @@ public:
     unsigned long long GetBlockActiveUntilMs() const { return blockActiveUntilMs; }
     unsigned long long GetLastBlockPostMs() const { return lastBlockPostMs; }
     void SetLastBlockPostMs(unsigned long long ms) { lastBlockPostMs = ms; }
+
+    unsigned long long GetLastWeaponRetryMs() const { return lastWeaponRetryMs; }
+    void SetLastWeaponRetryMs(unsigned long long ms) { lastWeaponRetryMs = ms; }
 };

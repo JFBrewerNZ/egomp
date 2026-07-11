@@ -183,8 +183,10 @@ public:
 // build(buffer, creature) wrapper and posted through DoCreatureAction.
 enum class CombatActionType
 {
-    Roll = 0,   // CCombatAction_ControlledStrafeJump
-    Block = 1,  // CCreatureAction_StartBlocking
+    Roll = 0,       // CCombatAction_ControlledStrafeJump
+    Block = 1,      // CCreatureAction_StartBlocking
+    Unsheathe = 2,  // CCreatureAction_UnsheatheItemFromInventory (weapon to hand)
+    Sheathe = 3,    // CCreatureAction_SheatheItemToInventory (weapon to back)
     Count
 };
 

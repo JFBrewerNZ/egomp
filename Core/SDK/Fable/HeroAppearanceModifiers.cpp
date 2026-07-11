@@ -64,6 +64,13 @@ namespace
     // trigger @0x62D14B.
     const uintptr_t FN_BUILD_BLOCK = 0x855BE0;
 
+    // Unsheathe/sheathe builders. Unsheathe args confirmed from the wield
+    // reconciler (0x5CA84B): (creature, weaponThing, 0, 0x96). Sheathe is
+    // 3 args; (creature, weaponThing, 0x96) by symmetry — SEH-guarded.
+    const uintptr_t FN_BUILD_UNSHEATHE = 0x6A0150;
+    const uintptr_t FN_BUILD_SHEATHE = 0x69FFD0;
+    const int SHEATHE_FLAGS = 0x96;
+
     const size_t MORPH_BLOB_OFFSET = 0x40;
     const size_t MORPH_DIRTY_FLAG_OFFSET = 0x3D;
     const uintptr_t FN_MORPH_UPDATE_PUMP = 0x71E130;
@@ -454,6 +461,25 @@ namespace CombatActions
             case CombatActionType::Block:
                 action = ((void*(__thiscall*)(void*, void*))FN_BUILD_BLOCK)(actionBuffer, creature);
                 break;
+            case CombatActionType::Unsheathe:
+            case CombatActionType::Sheathe:
+            {
+                // Reconstructed with the puppet's OWN carried weapon — the
+                // real action attaches/detaches the weapon model to the
+                // hand, which the anim mirror alone never did.
+                CTCInventoryWeapons* weapons = CTCInventoryWeapons::FromCreature(creature);
+                CThing* weapon = weapons ? weapons->GetCarriedMeleeThing() : nullptr;
+                if (!weapon)
+                    return;
+
+                if (type == CombatActionType::Unsheathe)
+                    action = ((void*(__thiscall*)(void*, void*, void*, int, int))FN_BUILD_UNSHEATHE)(
+                        actionBuffer, creature, weapon, 0, SHEATHE_FLAGS);
+                else
+                    action = ((void*(__thiscall*)(void*, void*, void*, int))FN_BUILD_SHEATHE)(
+                        actionBuffer, creature, weapon, SHEATHE_FLAGS);
+                break;
+            }
             default:
                 return;
             }
