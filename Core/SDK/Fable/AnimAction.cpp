@@ -1,6 +1,7 @@
 #include "AnimAction.h"
 
 #include <cstring>
+#include <unordered_map>
 #include <windows.h>
 
 namespace
@@ -76,6 +77,12 @@ namespace
         out.d24 = *(const unsigned int*)(base + OFF_D24);
         out.keyExtra = *(const unsigned int*)(base + OFF_ANIM_KEY + 4);
         out.localContext = *(void* const*)(base + OFF_CONTEXT);
+
+        if (IsReadable(out.localContext, 8))
+        {
+            out.ctxId0 = ((const unsigned int*)out.localContext)[0];
+            out.ctxId1 = ((const unsigned int*)out.localContext)[1];
+        }
         out.a8 = *(const unsigned char*)(base + OFF_A8 + 0);
         out.a9 = *(const unsigned char*)(base + OFF_A8 + 1);
         out.aa = *(const unsigned char*)(base + OFF_A8 + 2);
@@ -177,5 +184,44 @@ namespace AnimAction
         {
             return false;
         }
+    }
+
+    // Contexts live in per-region anim tables and can be freed on region
+    // unload; FindContext revalidates instead of the registry trying to
+    // track lifetimes. {0,0} ids are not registered (no identity to match).
+    static std::unordered_map<unsigned long long, void*> g_contextRegistry;
+
+    static unsigned long long ContextKey(unsigned int id0, unsigned int id1)
+    {
+        return ((unsigned long long)id0 << 32) | id1;
+    }
+
+    void RegisterContext(void* context, unsigned int id0, unsigned int id1)
+    {
+        if (!context || (id0 == 0 && id1 == 0))
+            return;
+
+        g_contextRegistry[ContextKey(id0, id1)] = context;
+    }
+
+    void* FindContext(unsigned int id0, unsigned int id1)
+    {
+        if (id0 == 0 && id1 == 0)
+            return nullptr;
+
+        auto it = g_contextRegistry.find(ContextKey(id0, id1));
+        if (it == g_contextRegistry.end())
+            return nullptr;
+
+        void* context = it->second;
+        if (!IsReadable(context, 8)
+            || ((const unsigned int*)context)[0] != id0
+            || ((const unsigned int*)context)[1] != id1)
+        {
+            g_contextRegistry.erase(it);
+            return nullptr;
+        }
+
+        return context;
     }
 }

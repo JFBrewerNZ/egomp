@@ -180,32 +180,36 @@ void NetMainGameComponent::HandleDebugKeys()
     if (dumpEquipment)
         EquipmentProbe::DumpEquipment(creature);
 
-    // Local end-to-end test of the animation-sync apply path, no LAN needed:
-    // with the tracer on (NUMPAD0), any nearby NPC's PlayAnimation gets
-    // captured; NUMPAD9 replays the newest capture on the local hero.
-    // Alternating presses test the two context hypotheses: without the
-    // captured +0x74 context thing (what a remote replay does) and with it.
+    // Local end-to-end test of the animation-sync apply path, no LAN
+    // needed: NUMPAD9 replays the newest captured anim action on the local
+    // hero, resolving the context from the registry by its portable id —
+    // exactly what a remote peer does with an incoming ID_PLAYER_ANIM.
+    // Falls back to the raw captured pointer if the registry lookup fails.
     if (replayAnim)
     {
         AnimActionFields fields;
         if (!ActionTracer::GetLastAnimCapture(fields))
         {
-            std::cout << "[EgoMP] Anim replay: nothing captured yet — turn the tracer on"
-                " (NUMPAD0) and stand near NPCs first" << std::endl;
+            std::cout << "[EgoMP] Anim replay: nothing captured yet — stand near NPCs first"
+                << std::endl;
         }
         else
         {
-            static bool useContext = false;
-            void* context = useContext ? fields.localContext : nullptr;
+            void* context = AnimAction::FindContext(fields.ctxId0, fields.ctxId1);
+            const char* mode = "registry";
+            if (!context)
+            {
+                context = fields.localContext;
+                mode = "raw-captured (registry MISS)";
+            }
 
             bool ok = AnimAction::Play(creature, fields, context);
             std::cout << "[EgoMP] Anim replay '"
                 << (fields.name[0] ? fields.name : "<nameless>")
                 << "' (d24=" << fields.d24 << ", loops=" << fields.loops
-                << ", context=" << (useContext ? "captured" : "null") << "): "
+                << ", ctxId=" << std::hex << fields.ctxId0 << "/" << fields.ctxId1
+                << std::dec << ", context=" << mode << "): "
                 << (ok ? "posted" : "FAILED") << std::endl;
-
-            useContext = !useContext;
         }
     }
 }
@@ -325,6 +329,8 @@ void NetMainGameComponent::SetupNetworkCallbacks()
         bs.Read(fields.d20);
         bs.Read(fields.d24);
         bs.Read(fields.keyExtra);
+        bs.Read(fields.ctxId0);
+        bs.Read(fields.ctxId1);
         bs.Read(fields.loops);
         bs.Read(fields.a8);
         bs.Read(fields.a9);

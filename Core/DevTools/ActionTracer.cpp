@@ -11,13 +11,15 @@ namespace
 {
     const uintptr_t FN_DO_CREATURE_ACTION = 0x6644F0;
 
-    // CCreatureAction_PlayAnimation resolving ctor (121 callers — the main
-    // "play animation by selector" API): __thiscall(buffer, creature,
-    // selector, animKey*, a4..a8); resolves `selector` against the
-    // creature's anim-set map (0x662FA0) into the action's +0x74 context.
-    // Hooked to learn what the selector IS (int enum / string / def ptr) —
-    // the portable animation identity for nameless anims.
+    // CCreatureAction_PlayAnimation resolving ctors: both resolve a
+    // `selector` against the creature's anim-set map (0x662FA0) into the
+    // action's +0x74 context. Hooked to learn what the selector IS (int
+    // enum / string / def ptr) — the portable animation identity for
+    // nameless anims. 0x8424F0 = 8-arg variant (121 callers), 0x842660 =
+    // 11-arg variant (the first capture session saw actions but no
+    // [AnimCtor] lines, so the ambients likely come through this one).
     const uintptr_t FN_PLAY_ANIM_CTOR_RESOLVING = 0x8424F0;
+    const uintptr_t FN_PLAY_ANIM_CTOR_RESOLVING11 = 0x842660;
 
     bool g_installed = false;
     bool g_enabled = false;
@@ -50,6 +52,12 @@ namespace
         void* creature, void* selector, void* animKey,
         unsigned int a4, unsigned int a5, unsigned int a6,
         unsigned int a7, unsigned int a8) = nullptr;
+
+    void*(__fastcall* OPlayAnimCtorResolving11)(void* self, void* edx,
+        void* creature, void* selector, void* animKey,
+        unsigned int a4, unsigned int a5, unsigned int a6,
+        unsigned int a7, unsigned int a8,
+        unsigned int a9, unsigned int a10, unsigned int a11) = nullptr;
 
     std::string g_lastCtorLine;
 
@@ -136,18 +144,9 @@ namespace
         }
     }
 
-    void TraceAnimAction(void* creature, void* action,
+    void TraceAnimAction(const AnimActionFields& fields,
         const char* actionName, const char* creatureName)
     {
-        AnimActionFields fields;
-        bool extracted = AnimAction::Extract(action, fields);
-
-        if (extracted)
-        {
-            g_lastAnim = fields;
-            g_hasLastAnim = true;
-        }
-
         char ctxDesc[96] = "null";
         if (fields.localContext)
             DescribeValue(fields.localContext, ctxDesc, sizeof(ctxDesc));
@@ -168,14 +167,31 @@ namespace
             g_lastAnimLine = line;
             ObjectInspector::LogLine(line);
         }
+    }
 
-        // One raw dump per class per session — from any creature — so
-        // unknown layouts (PlayCombatAnimation) can be mapped offline.
-        if (g_dumpedAnimClasses.insert(actionName).second)
+    void LogAnimCtor(const char* tag, void* creature, void* selector, void* animKey,
+        const unsigned int* extra, size_t extraCount)
+    {
+        char creatureName[128] = "?";
+        const char* creatureRtti = ObjectInspector::GetRttiName(creature);
+        if (creatureRtti) Demangle(creatureRtti, creatureName, sizeof(creatureName));
+
+        char selDesc[96];
+        DescribeValue(selector, selDesc, sizeof(selDesc));
+        char keyDesc[96];
+        DescribeValue(animKey, keyDesc, sizeof(keyDesc));
+
+        char line[480];
+        int len = sprintf_s(line,
+            "[%s] creature=%-22s selector=%p(%s) key=%p(%s) args:",
+            tag, creatureName, selector, selDesc, animKey, keyDesc);
+        for (size_t i = 0; i < extraCount && len > 0 && (size_t)len + 12 < sizeof(line); i++)
+            len += sprintf_s(line + len, sizeof(line) - len, " %08X", extra[i]);
+
+        if (g_lastCtorLine != line)
         {
-            char label[160];
-            sprintf_s(label, "anim action params: %s", actionName);
-            ObjectInspector::Dump(label, action, 0x140);
+            g_lastCtorLine = line;
+            ObjectInspector::LogLine(line);
         }
     }
 
@@ -186,31 +202,30 @@ namespace
     {
         if (g_enabled)
         {
-            char creatureName[128] = "?";
-            const char* creatureRtti = ObjectInspector::GetRttiName(creature);
-            if (creatureRtti) Demangle(creatureRtti, creatureName, sizeof(creatureName));
-
-            char selDesc[96];
-            DescribeValue(selector, selDesc, sizeof(selDesc));
-            char keyDesc[96];
-            DescribeValue(animKey, keyDesc, sizeof(keyDesc));
-
-            char line[420];
-            sprintf_s(line,
-                "[AnimCtor] creature=%-22s selector=%p(%s) key=%p(%s) "
-                "a4=%08X a5=%08X a6=%08X a7=%08X a8=%08X",
-                creatureName, selector, selDesc, animKey, keyDesc,
-                a4, a5, a6, a7, a8);
-
-            if (g_lastCtorLine != line)
-            {
-                g_lastCtorLine = line;
-                ObjectInspector::LogLine(line);
-            }
+            unsigned int extra[] = { a4, a5, a6, a7, a8 };
+            LogAnimCtor("AnimCtor8", creature, selector, animKey, extra, 5);
         }
 
         return OPlayAnimCtorResolving(self, edx, creature, selector, animKey,
             a4, a5, a6, a7, a8);
+    }
+
+    // 11-arg variant: selector is arg2 (resolved via 0x6924B0 like the
+    // 8-arg one) but the anim key is arg6 here (pushed as base-arg5).
+    void* __fastcall HPlayAnimCtorResolving11(void* self, void* edx,
+        void* creature, void* selector, void* a3,
+        unsigned int a4, unsigned int a5, unsigned int animKey,
+        unsigned int a7, unsigned int a8,
+        unsigned int a9, unsigned int a10, unsigned int a11)
+    {
+        if (g_enabled)
+        {
+            unsigned int extra[] = { (unsigned int)(uintptr_t)a3, a4, a5, a7, a8, a9, a10, a11 };
+            LogAnimCtor("AnimCtor11", creature, selector, (void*)(uintptr_t)animKey, extra, 8);
+        }
+
+        return OPlayAnimCtorResolving11(self, edx, creature, selector, a3,
+            a4, a5, animKey, a7, a8, a9, a10, a11);
     }
 
     int __fastcall HDoCreatureAction(void* creature, void* edx, void* action)
@@ -218,6 +233,26 @@ namespace
         const char* actionRtti = ObjectInspector::GetRttiName(action);
         char actionName[128] = "?";
         if (actionRtti) Demangle(actionRtti, actionName, sizeof(actionName));
+
+        // Anim-family actions always feed the context registry, tracer on or
+        // off — a remote player's anim can only be replayed with a context
+        // this machine has already seen locally. Extraction is limited to
+        // the 0x693B30-layout classes (PlayCombatAnimation differs and
+        // would register garbage).
+        bool isAnimFamily = actionRtti && IsAnimFamilyClass(actionName);
+        AnimActionFields animFields;
+        bool animExtracted = false;
+        if (actionRtti && AnimAction::ClassHasAnimLayout(actionName))
+        {
+            animExtracted = AnimAction::Extract(action, animFields);
+            if (animExtracted)
+            {
+                AnimAction::RegisterContext(animFields.localContext,
+                    animFields.ctxId0, animFields.ctxId1);
+                g_lastAnim = animFields;
+                g_hasLastAnim = true;
+            }
+        }
 
         // Combat sync observer runs regardless of debug logging.
         if (g_observer && actionRtti)
@@ -229,9 +264,19 @@ namespace
             char creatureName[128] = "?";
             if (creatureRtti) Demangle(creatureRtti, creatureName, sizeof(creatureName));
 
-            if (actionRtti && IsAnimFamilyClass(actionName))
+            if (isAnimFamily)
             {
-                TraceAnimAction(creature, action, actionName, creatureName);
+                if (animExtracted)
+                    TraceAnimAction(animFields, actionName, creatureName);
+
+                // One raw dump per class per session — from any creature —
+                // so unknown layouts (PlayCombatAnimation) can be mapped.
+                if (g_dumpedAnimClasses.insert(actionName).second)
+                {
+                    char label[160];
+                    sprintf_s(label, "anim action params: %s", actionName);
+                    ObjectInspector::Dump(label, action, 0x140);
+                }
             }
             else
             {
@@ -276,14 +321,24 @@ namespace ActionTracer
             g_installed = true;
         }
 
-        // Diagnostic-only hook; combat sync doesn't depend on it, so a
-        // failure here is silently tolerated.
-        if (MH_CreateHook(reinterpret_cast<void*>(FN_PLAY_ANIM_CTOR_RESOLVING),
+        // Diagnostic-only hooks; combat sync doesn't depend on them. Their
+        // install status is logged once so a silent failure (as suspected
+        // in the first capture session, which produced no [AnimCtor] lines)
+        // is visible.
+        bool ctor8Ok = MH_CreateHook(reinterpret_cast<void*>(FN_PLAY_ANIM_CTOR_RESOLVING),
                 reinterpret_cast<void*>(&HPlayAnimCtorResolving),
-                reinterpret_cast<void**>(&OPlayAnimCtorResolving)) == MH_OK)
-        {
-            MH_EnableHook(reinterpret_cast<void*>(FN_PLAY_ANIM_CTOR_RESOLVING));
-        }
+                reinterpret_cast<void**>(&OPlayAnimCtorResolving)) == MH_OK
+            && MH_EnableHook(reinterpret_cast<void*>(FN_PLAY_ANIM_CTOR_RESOLVING)) == MH_OK;
+
+        bool ctor11Ok = MH_CreateHook(reinterpret_cast<void*>(FN_PLAY_ANIM_CTOR_RESOLVING11),
+                reinterpret_cast<void*>(&HPlayAnimCtorResolving11),
+                reinterpret_cast<void**>(&OPlayAnimCtorResolving11)) == MH_OK
+            && MH_EnableHook(reinterpret_cast<void*>(FN_PLAY_ANIM_CTOR_RESOLVING11)) == MH_OK;
+
+        char line[128];
+        sprintf_s(line, "[AnimTracer] ctor hooks: 8-arg %s, 11-arg %s",
+            ctor8Ok ? "ok" : "FAILED", ctor11Ok ? "ok" : "FAILED");
+        ObjectInspector::LogLine(line);
     }
 
     void SetEnabled(bool enabled)

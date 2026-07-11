@@ -33,6 +33,15 @@ struct AnimActionFields
     int loops = 0;                // action+0xAC
     unsigned char a8 = 0, a9 = 0, aa = 0, ab = 0, b0 = 0;
 
+    // Portable identity of the +0x74 context object: its first two dwords.
+    // Confirmed live (2026-07-11): the same {id0, id1} pair appears at
+    // different context addresses across different creatures (NPCs AND the
+    // player) — e.g. sequential table entries 0xA30..0xA35 with matching
+    // second dwords. A receiver resolves these against contexts it has seen
+    // locally (the registry below).
+    unsigned int ctxId0 = 0;
+    unsigned int ctxId1 = 0;
+
     // Machine-local pointers captured for diagnostics / local replay only —
     // never sent over the wire.
     void* localContext = nullptr; // action+0x74
@@ -59,6 +68,21 @@ namespace AnimAction
     // is replayed with an empty key, exactly as the game constructed it.
     // `context` is the +0x74 context object (pass nullptr when replaying a
     // remote player's action — their pointer is meaningless here).
-    // SEH-guarded; false on failure.
+    // SEH-guarded; false on failure. The PlayAnimation ctor faults on a
+    // null context (confirmed live: every context=null replay failed, every
+    // captured-context one posted), so callers should resolve one via the
+    // registry first.
     bool Play(CThingPlayerCreature* creature, const AnimActionFields& fields, void* context);
+
+    // --- Context registry ---
+    // Every PlayAnimation-family action observed locally (any creature; the
+    // tracer hook feeds this) records its context pointer under its
+    // portable {id0, id1}. A remote player's anim is then replayed with
+    // THIS machine's context for the same id.
+    void RegisterContext(void* context, unsigned int id0, unsigned int id1);
+
+    // The locally-known context for an id, revalidated (still readable and
+    // still carrying the same id dwords) before being returned. nullptr if
+    // unknown or stale.
+    void* FindContext(unsigned int id0, unsigned int id1);
 }

@@ -21,6 +21,8 @@ static void WriteAnimFields(SLNet::BitStream& bs, const AnimActionFields& fields
     bs.Write(fields.d20);
     bs.Write(fields.d24);
     bs.Write(fields.keyExtra);
+    bs.Write(fields.ctxId0);
+    bs.Write(fields.ctxId1);
     bs.Write(fields.loops);
     bs.Write(fields.a8);
     bs.Write(fields.a9);
@@ -175,9 +177,15 @@ void NetPlayerManager::ReceiveNetPlayerAnim(int networkId, const AnimActionField
     if (!creature)
         return;
 
-    // The sender's context pointer is meaningless on this machine; the
-    // puppet plays the animation context-free.
-    AnimAction::Play(creature, fields, nullptr);
+    // The sender's context pointer is meaningless here — resolve THIS
+    // machine's context for the same portable id from the registry (fed by
+    // every anim action seen locally). The PlayAnimation ctor faults on a
+    // null context, so without a local match the anim is skipped.
+    void* context = AnimAction::FindContext(fields.ctxId0, fields.ctxId1);
+    if (!context && !fields.name[0])
+        return;
+
+    AnimAction::Play(creature, fields, context);
 }
 
 void NetPlayerManager::UpdateCombat()
