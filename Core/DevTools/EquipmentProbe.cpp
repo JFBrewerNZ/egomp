@@ -547,17 +547,42 @@ namespace EquipmentProbe
             return;
         }
 
-        sprintf_s(buf, "[Equip] probe: re-attaching existing carried weapon %s @ %p"
-            " via 0x5C36C2 on the hero...", DefNameOf(sourceWeapon).c_str(), (void*)sourceWeapon);
-        Emit(report, buf);
-        ObjectInspector::AppendToLogFile(report);
-        report.clear();
+        // Non-crashing diagnostic: dump a FRESH factory weapon and the
+        // hero's REAL carried weapon side by side. 0x5C36C2 faults reading
+        // source+0x70 on a fresh object but not on a real one, so the diff
+        // of these two dumps shows exactly which member the factory leaves
+        // uninitialised.
+        CCharString swordDefName(PROBE_WEAPON_DEF);
+        int defIndex = CDefinitionManager::Get()->GetDefGlobalIndexFromName(&swordDefName);
 
-        unsigned long attachException = 0;
-        GuardedAttachCarried(creature, sourceWeapon, &attachException);
-        sprintf_s(buf, "[Equip] probe: attach returned (exception 0x%X)"
-            " - did a second weapon appear on the back?", (unsigned)attachException);
+        C3DVector spawnPos = *((CThing*)creature)->GetPos();
+        spawnPos.X += 1.0f;
+
+        CCharString emptyName("");
+        unsigned long exceptionCode = 0;
+        void* freshObject = GuardedObjectCreate(defIndex, &spawnPos, &emptyName, &exceptionCode);
+
+        sprintf_s(buf, "[Equip] probe: fresh factory object %p, real carried weapon %s @ %p",
+            freshObject, DefNameOf(sourceWeapon).c_str(), (void*)sourceWeapon);
         Emit(report, buf);
         ObjectInspector::AppendToLogFile(report);
+
+        if (freshObject)
+            ObjectInspector::Dump("FRESH factory weapon", freshObject, 0x100);
+        ObjectInspector::Dump("REAL carried weapon", sourceWeapon, 0x100);
+
+        // Raw +0x70 dword on each — the exact field 0x5C36C2 dereferences.
+        std::string cmp;
+        char line[128];
+        void* freshP70 = freshObject && ObjectInspector::IsReadableMemory((char*)freshObject + 0x70, 4)
+            ? *(void**)((char*)freshObject + 0x70) : (void*)~0u;
+        void* realP70 = ObjectInspector::IsReadableMemory((char*)sourceWeapon + 0x70, 4)
+            ? *(void**)((char*)sourceWeapon + 0x70) : (void*)~0u;
+        sprintf_s(line, "[Equip] +0x70: fresh=%p (%s)  real=%p (%s)",
+            freshP70, ObjectInspector::GetRttiName(freshP70) ? ObjectInspector::GetRttiName(freshP70) : "-",
+            realP70, ObjectInspector::GetRttiName(realP70) ? ObjectInspector::GetRttiName(realP70) : "-");
+        cmp = line;
+        std::cout << cmp << std::endl;
+        ObjectInspector::AppendToLogFile(cmp);
     }
 }
