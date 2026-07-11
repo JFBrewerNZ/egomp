@@ -586,3 +586,64 @@ namespace EquipmentProbe
         ObjectInspector::AppendToLogFile(cmp);
     }
 }
+
+namespace
+{
+    // SEH-isolated step 2 (no unwindable locals allowed here).
+    bool GuardedCarriedEquip(CTCInventoryWeapons* weapons, CThing* weapon,
+        unsigned long* exceptionCode)
+    {
+        *exceptionCode = 0;
+        __try
+        {
+            weapons->SetCarriedMeleeWeapon(weapon);
+            weapons->RegenerateCarriedWeapons();
+            return true;
+        }
+        __except (*exceptionCode = GetExceptionCode(), EXCEPTION_EXECUTE_HANDLER)
+        {
+            return false;
+        }
+    }
+}
+
+namespace EquipmentProbe
+{
+    void WeaponEquipProbe(CThingPlayerCreature* creature)
+    {
+        static CThing* pendingWeapon = nullptr;
+
+        CTCInventoryWeapons* weapons = CTCInventoryWeapons::FromCreature(creature);
+        if (!weapons)
+        {
+            ObjectInspector::LogLine("[Equip] weapon probe: no CTCInventoryWeapons on hero");
+            return;
+        }
+
+        char buf[256];
+
+        if (!pendingWeapon)
+        {
+            CCharString defName(PROBE_WEAPON_DEF);
+            int defIndex = CDefinitionManager::Get()->GetDefGlobalIndexFromName(&defName);
+
+            pendingWeapon = CTCInventoryWeapons::GiveWeapon(creature, defIndex);
+
+            sprintf_s(buf, "[Equip] weapon probe step 1: %s (def %d) created @ %p,"
+                " pickup posted — wait for the acquire popup, then press NUMPAD8 again to equip",
+                PROBE_WEAPON_DEF, defIndex, (void*)pendingWeapon);
+            ObjectInspector::LogLine(buf);
+            return;
+        }
+
+        unsigned long exceptionCode = 0;
+        bool ok = GuardedCarriedEquip(weapons, pendingWeapon, &exceptionCode);
+
+        sprintf_s(buf, "[Equip] weapon probe step 2: holder := %p + regenerate -> %s"
+            " (exception %08lX) — check the hero's back for the broadsword",
+            (void*)pendingWeapon, ok ? "OK" : "FAULTED", exceptionCode);
+        ObjectInspector::LogLine(buf);
+
+        pendingWeapon = nullptr;
+    }
+}

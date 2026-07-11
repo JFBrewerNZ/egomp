@@ -17,10 +17,16 @@ namespace
     const int TC_ID_HERO_STATS = 0x04;
     const int TC_ID_INVENTORY_WEAPONS = 0x13;
 
-    // Carried-weapon def-holders (CIntelligentPointer) + accessor.
+    // Carried-weapon def-holders (CIntelligentPointer) + accessors.
     const size_t WEAPON_MELEE_HOLDER_OFFSET = 0x134;
     const size_t WEAPON_RANGED_HOLDER_OFFSET = 0x148;
     const uintptr_t FN_INTELLIGENT_POINTER_GET = 0xA01B50;
+    const uintptr_t FN_INTELLIGENT_POINTER_SET = 0xA01B90;
+
+    // CTCInventoryWeapons::RegenerateCarriedWeapons — rebuilds the on-back
+    // weapon visuals from the carried holders (tail-calls RestoreCarried-
+    // Weapons 0x5C8101 or the clear path 0x5C552C by sheathed mode).
+    const uintptr_t FN_REGENERATE_CARRIED_WEAPONS = 0x5C9962;
 
     // Object factory + pickup action (see RE-NOTES.md / EquipmentProbe).
     const uintptr_t FN_THING_OBJECT_CREATE = 0x703210;
@@ -285,6 +291,23 @@ int CTCInventoryWeapons::GetCarriedRangedDefIndex()
     return CarriedWeaponDefIndex(this, WEAPON_RANGED_HOLDER_OFFSET);
 }
 
+void CTCInventoryWeapons::SetCarriedMeleeWeapon(CThing* weapon)
+{
+    void* holder = (char*)this + WEAPON_MELEE_HOLDER_OFFSET;
+    ((void(__thiscall*)(void*, CThing*))FN_INTELLIGENT_POINTER_SET)(holder, weapon);
+}
+
+void CTCInventoryWeapons::SetCarriedRangedWeapon(CThing* weapon)
+{
+    void* holder = (char*)this + WEAPON_RANGED_HOLDER_OFFSET;
+    ((void(__thiscall*)(void*, CThing*))FN_INTELLIGENT_POINTER_SET)(holder, weapon);
+}
+
+void CTCInventoryWeapons::RegenerateCarriedWeapons()
+{
+    ((void(__thiscall*)(void*))FN_REGENERATE_CARRIED_WEAPONS)(this);
+}
+
 namespace CombatActions
 {
     void Perform(CThingPlayerCreature* creature, CombatActionType type, const C3DVector& direction)
@@ -327,10 +350,10 @@ namespace CombatActions
     }
 }
 
-void CTCInventoryWeapons::GiveWeapon(CThingPlayerCreature* creature, int defGlobalIndex)
+CThing* CTCInventoryWeapons::GiveWeapon(CThingPlayerCreature* creature, int defGlobalIndex)
 {
     if (defGlobalIndex < 0 || !creature)
-        return;
+        return nullptr;
 
     __try
     {
@@ -342,14 +365,17 @@ void CTCInventoryWeapons::GiveWeapon(CThingPlayerCreature* creature, int defGlob
             defGlobalIndex, &pos, 4, 0, 0, &emptyName);
 
         if (!object)
-            return;
+            return nullptr;
 
         static char actionBuffer[0x200];
         void* action = ((void*(__thiscall*)(void*, void*, void*))FN_ACTION_ADD_REAL_OBJECT_CTOR)(
             actionBuffer, creature, object);
         ((int(__thiscall*)(void*, void*))FN_DO_CREATURE_ACTION)(creature, action);
+
+        return (CThing*)object;
     }
     __except (EXCEPTION_EXECUTE_HANDLER)
     {
+        return nullptr;
     }
 }

@@ -18,4 +18,12 @@ namespace EquipmentProbe
     // what happened. Iterates one candidate per call; watch the hero for
     // visible changes to identify equip/unequip functions.
     void ProbeNextCandidate(CThingPlayerCreature* creature);
+
+    // NUMPAD8: two-step equip-by-def test of the carried-weapon chain.
+    // Press 1: factory-create a broadsword and post the pickup action (the
+    // game wires it as a proper inventory weapon; acquire popup expected).
+    // Press 2: assign it to the carried-melee holder (+0x134) and call
+    // RegenerateCarriedWeapons — success = the broadsword appears on the
+    // hero's back. This is the puppet weapon-visual apply path.
+    void WeaponEquipProbe(CThingPlayerCreature* creature);
 }

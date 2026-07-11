@@ -4,6 +4,8 @@
 
 #include "ThingPlayerCreature.h"
 
+class CThing;
+
 // CTCHeroAttachableAppearanceModifiers — the thing component that attaches
 // visual appearance modifiers (hair, beards, hats, horns, clothing visuals)
 // to a hero creature. Layout and functions recovered from the component's
@@ -112,7 +114,8 @@ public:
 
 // CTCInventoryWeapons — the hero's weapons component (thing-component id
 // 0x13). Carried-weapon def-holders are CIntelligentPointers at +0x134
-// (melee) / +0x148 (ranged); accessor 0xA01B50 dereferences them.
+// (melee) / +0x148 (ranged); accessor 0xA01B50 dereferences them,
+// 0xA01B90 assigns with correct refcounting.
 class CTCInventoryWeapons
 {
 public:
@@ -122,10 +125,21 @@ public:
     int GetCarriedMeleeDefIndex();
     int GetCarriedRangedDefIndex();
 
+    // Writes the carried-weapon holder (CIntelligentPointer::Assign,
+    // 0xA01B90). Pass nullptr to clear. Call RegenerateCarriedWeapons
+    // afterwards to rebuild the on-back visuals.
+    void SetCarriedMeleeWeapon(CThing* weapon);
+    void SetCarriedRangedWeapon(CThing* weapon);
+
+    // 0x5C9962: rebuilds (or clears, depending on the creature's sheathed
+    // mode) the carried-weapon back visuals from the holders — the save-
+    // load restore path.
+    void RegenerateCarriedWeapons();
+
     // Creates a weapon object from a def index next to the creature and
-    // posts a pickup action so the creature acquires it (a weaponless hero
-    // auto-equips it onto the back). Guarded; a bad def is a no-op.
-    static void GiveWeapon(CThingPlayerCreature* creature, int defGlobalIndex);
+    // posts a pickup action so the creature acquires it. Returns the
+    // created world object (before the pickup completes), or nullptr.
+    static CThing* GiveWeapon(CThingPlayerCreature* creature, int defGlobalIndex);
 };
 
 // Replicated combat actions (see the tracer capture in RE-NOTES.md). Most

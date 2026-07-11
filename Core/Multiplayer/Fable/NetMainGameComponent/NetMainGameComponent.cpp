@@ -115,7 +115,7 @@ void NetMainGameComponent::Options()
     if (config.debugKeys)
     {
         std::cout << "[EgoMP] NUMPAD5/6/7: inspect hero / raw TC list / inventory TCs (debug)" << std::endl;
-        std::cout << "[EgoMP] NUMPAD8: log worn equipment (debug)" << std::endl;
+        std::cout << "[EgoMP] NUMPAD8: weapon-equip probe (press twice: create+pickup, then equip)" << std::endl;
         std::cout << "[EgoMP] NUMPAD9: replay last captured animation on the hero (debug)" << std::endl;
         std::cout << "[EgoMP] NUMPAD0: toggle live action/combat tracer (debug)" << std::endl;
     }
@@ -178,7 +178,7 @@ void NetMainGameComponent::HandleDebugKeys()
     }
 
     if (dumpEquipment)
-        EquipmentProbe::DumpEquipment(creature);
+        EquipmentProbe::WeaponEquipProbe(creature);
 
     // Local end-to-end test of the animation-sync apply path, no LAN
     // needed: NUMPAD9 replays the hero's most recently RESOLVED anim
