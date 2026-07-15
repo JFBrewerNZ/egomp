@@ -173,3 +173,61 @@ name-recovery interpretation wins? Are d20/d24 floats or pointers?
 4. Wire protocol: extend announce/create payloads with an equipment blob
    (n slots x def index), new ID_PLAYER_EQUIPMENT message on change
    (hook the inventory-changed path once found).
+
+## Input / window system RE (2026-07-15) — mouse grab & window dragging
+
+Static analysis (pefile+capstone probes; no debugger). Addresses are file =
+runtime (no ASLR, base 0x400000).
+
+- **DirectInput**: single import `DirectInput8Create`, called once at
+  0xA60093 (wrapper obj stores IDirectInput8* at +0x80). Mouse init fn =
+  0xAB5710, `__thiscall(inputObj; bool exclusive)`:
+  - CreateDevice(GUID_SysMouse @0x12ACAA4) at 0xAB574B.
+  - exclusive!=0 branch: `SetCooperativeLevel(hwnd, 5)` (EXCLUSIVE|FOREGROUND)
+    via `push 5` at **0xAB5786** — the game's ONLY mouse coop call, and the
+    thing that blocks title-bar dragging. Sets mode byte `inputObj+0x343C=1`.
+  - exclusive==0 branch (retail-unused): flags 0xA (NONEXCLUSIVE|BACKGROUND)
+    at 0xAB583D, clears +0x343C.
+  - hwnd source everywhere: `0x9A4EC0()` (engine window obj) `+0x94`.
+  - Keyboard: GUID @0x12ACA94, coop flags **6** at 0xAB6484 (already
+    non-exclusive). Joystick setup fn 0xAB6B10 uses flags 5 at 0xAB6B78 +
+    DIPROP range/deadzone — leave alone (joystick exclusivity is harmless).
+- **Mode byte +0x343C** gates the cursor strategy in the mouse update fn
+  (0xAB58E0, runs per frame): 1 = read buffered DI events (0xAB4910), sync
+  renderer cursor from accumulated floats +0x3414/+0x3418; 0 = read the real
+  OS cursor (GetCursorPos+ScreenToClient, 0xAB4BB0/0xAB5030). Byte
+  **+0x343E** (ctor-init 0) gates a SetCursorPos recenter-to-window-center
+  block (0xAB5BEB). Byte +0x343D=1 ctor-set. The input ctor (~0xAB5D05) also
+  calls `ShowCursor(exclusive ? FALSE : TRUE)` once at 0xAB5D8F (display
+  count -1 in retail mode).
+- **EgoMP mouse_unlock patch**: flip the `push 5` immediate at 0xAB5787 to 6
+  (NONEXCLUSIVE|FOREGROUND). DI relative data is identical non-exclusive, and
+  +0x343C stays 1 so the game keeps its retail cursor path; only Windows'
+  own frame handling comes back. Deliberately NOT flipping the init bool —
+  that would switch the game onto the untested GetCursorPos path. A
+  WM_SETCURSOR-only subclass restores the ShowCursor count (arrow visible on
+  frame) and hides the arrow over the client area (Core/Display/MouseUnlock).
+- **Game window**: class registered at 0x9A6551 (RegisterClassExW), class
+  cursor = IDC_ARROW, WndProc = **0x9A5B60**. WndProc dispatch:
+  - optional pre-filter callback at `[0x13CA798]+0x178` gets every message
+    first (returns handled flag) — installable engine hook, none seen.
+  - msgs 1..8 jump table 0x9A5F7C: CREATE stores obj, DESTROY sets quit flag
+    +8, ACTIVATE→0x9A5A50(bool), SETFOCUS/KILLFOCUS→0x9A5A30(bool) + sound
+    volume ramp, SIZE handles min/restore like activate.
+  - msgs 0x1C..0x105 byte-table 0x9A5FAC → 4 handlers @0x9A5F9C: only
+    ACTIVATEAPP (→0x9A5270(bool)), WM_CHAR (text input), SYSKEYDOWN/UP
+    (swallow VK_MENU/VK_F10). **Everything else → DefWindowProcW** (incl.
+    WM_SETCURSOR, WM_NCLBUTTONDOWN, WM_CLOSE, WM_NCHITTEST).
+  - WM_SYSCOMMAND (0x112) handler 0x9A5E36 swallows only SC_SCREENSAVE and
+    SC_MONITORPOWER; SC_MOVE/SC_SIZE/SC_CLOSE reach DefWindowProc, so native
+    dragging works once the mouse grab is gone.
+  - Mouse buttons/wheel are WINDOW-MESSAGE driven: 0x201/0x202/0x204/0x205
+    set state bytes obj+0xDD/+0xDF; 0x207..0x218 second table @0x9A60B4
+    (MBUTTON +0xDE, XBUTTONs +0xE0/+0xE1, wheel accumulates obj+0xE4).
+    Only mouse MOTION comes from DirectInput.
+- `ClipCursor` is NOT imported. SetCursorPos sites: 0xAB47A0 (sync OS cursor
+  to game cursor, only when +0x343C==0) and 0xAB5BEB (recenter, gated by
+  +0x343E). Second window class @0x99E0BC (DefWindowProcA proc, own
+  SetCapture/SetCursor at 0x99D6xx) is a separate dialog-ish window.
+- Pause-on-focus-loss leads for later: WM_ACTIVATE→0x9A5A50,
+  WM_ACTIVATEAPP→0x9A5270, focus→0x9A5A30 (volume + [+0x170] callback).

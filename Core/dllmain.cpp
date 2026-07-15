@@ -2,6 +2,7 @@
 #include <iostream>
 
 #include "./Config/Config.h"
+#include "./Display/MouseUnlock.h"
 #include "./Display/WindowedMode.h"
 #include "./Platform/SaveRedirect.h"
 #include "./Multiplayer/Fable/Multiplayer.h"
@@ -93,6 +94,11 @@ BOOL APIENTRY DllMain( HMODULE hModule,
             // its Direct3D device.
             if (Config::Get().windowed)
                 WindowedMode::Install();
+
+            // Let the title bar be dragged: one-byte patch that makes Fable
+            // acquire its DirectInput mouse non-exclusively. Gates itself on
+            // config; must beat the game's input init, like the patch above.
+            MouseUnlock::Install();
 
             // Give a second client its own save folder so the two clients don't
             // collide on Documents\My Games\Fable. Also before the game runs.

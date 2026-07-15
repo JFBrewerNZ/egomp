@@ -1,5 +1,6 @@
 #include "WindowedMode.h"
 
+#include "MouseUnlock.h"
 #include "../Config/Config.h"
 #include "../Platform/ClientSlot.h"
 
@@ -141,10 +142,14 @@ namespace
             ReshapeWindow();
     }
 
+    // Deferred window work: the reshape, plus MouseUnlock's cursor fix, both
+    // of which must land well after Fable's fragile post-CreateDevice init.
     DWORD WINAPI ReshapeThread(LPVOID)
     {
         Sleep(kReshapeDelayMs);
-        ApplyReshapeOnce();
+        if (reshapeEnabled)
+            ApplyReshapeOnce();
+        MouseUnlock::OnWindowReady(gameWindow);
         return 0;
     }
 
@@ -227,11 +232,11 @@ namespace
         if (SUCCEEDED(hr) && returnedDevice && *returnedDevice)
         {
             InstallResetHook(*returnedDevice);
-            if (reshapeEnabled)
+            if (reshapeEnabled || MouseUnlock::Active())
             {
-                // Reshape shortly, off-thread, so it lands well after Fable's
-                // init check regardless of whether this (possibly unfocused)
-                // client is rendering.
+                // Reshape (and/or install the cursor fix) shortly, off-thread,
+                // so it lands well after Fable's init check regardless of
+                // whether this (possibly unfocused) client is rendering.
                 HANDLE t = CreateThread(nullptr, 0, &ReshapeThread, nullptr, 0, nullptr);
                 if (t)
                     CloseHandle(t);

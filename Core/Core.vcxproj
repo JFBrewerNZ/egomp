@@ -145,6 +145,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Config\Config.h" />
+    <ClInclude Include="Display\MouseUnlock.h" />
     <ClInclude Include="Display\WindowedMode.h" />
     <ClInclude Include="Platform\SaveRedirect.h" />
     <ClInclude Include="Platform\ClientSlot.h" />
@@ -193,6 +194,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Config\Config.cpp" />
+    <ClCompile Include="Display\MouseUnlock.cpp" />
     <ClCompile Include="Display\WindowedMode.cpp" />
     <ClCompile Include="Platform\SaveRedirect.cpp" />
     <ClCompile Include="Platform\ClientSlot.cpp" />

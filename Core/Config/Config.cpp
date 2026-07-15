@@ -33,6 +33,8 @@ Config::Config()
     reshapeWindow = GetPrivateProfileIntA("display", "reshape", reshapeWindow ? 1 : 0, iniPath.c_str()) != 0;
     windowWidth = GetPrivateProfileIntA("display", "window_width", windowWidth, iniPath.c_str());
     windowHeight = GetPrivateProfileIntA("display", "window_height", windowHeight, iniPath.c_str());
+    int unlock = GetPrivateProfileIntA("display", "mouse_unlock", -1, iniPath.c_str());
+    mouseUnlock = (unlock < 0) ? reshapeWindow : unlock != 0;
 
     separateSaves = GetPrivateProfileIntA("storage", "separate_saves", separateSaves ? 1 : 0, iniPath.c_str()) != 0;
     char dir[512] = {};
