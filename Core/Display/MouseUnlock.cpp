@@ -62,7 +62,12 @@ namespace
     bool     grabMode = false; // [display] mouse_lock: Alt-toggled grab
     HWND     gameWnd  = nullptr;
     WNDPROC  gameProc = nullptr;
-    volatile LONG cursorCountFixed = 0;
+
+    // Posted by the worker to the window thread on every grab/release
+    // transition so the cursor's visibility flips deterministically, without
+    // waiting for a WM_SETCURSOR (which only fires when the mouse moves).
+    // wParam: 1 = grabbed (hide the arrow), 0 = released (show it).
+    constexpr UINT WM_EGOMP_CURSOR = WM_APP + 0x51;
 
     // Written by the WndProc (window thread), read by the worker thread.
     volatile bool inSizeMove = false; // inside DefWindowProc's move/size loop
@@ -129,6 +134,23 @@ namespace
         }
     }
 
+    // Drive the cursor's display count to a definite state (window thread
+    // only). ShowCursor keeps a counter; the cursor shows while it is >= 0.
+    // Fable's init left it at -1 (hidden); we pin it to -1 when grabbed and 0
+    // when released, so visibility never depends on a stray WM_SETCURSOR. The
+    // iteration cap guards against a count that starts far from the target.
+    void SetCursorHidden(bool hidden)
+    {
+        if (hidden)
+        {
+            for (int i = 0; i < 64 && ShowCursor(FALSE) >= 0; ++i) {}
+        }
+        else
+        {
+            for (int i = 0; i < 64 && ShowCursor(TRUE) < 0; ++i) {}
+        }
+    }
+
     // Park the freshly released cursor mid-window so the arrow appears
     // somewhere predictable instead of wherever it was left long ago.
     void CenterCursor(HWND hwnd)
@@ -166,6 +188,9 @@ namespace
                 mouseExclusive = wantExclusive;
                 if (!wantExclusive)
                     CenterCursor(gameWnd);
+                // Flip the cursor on the window thread, now, regardless of
+                // whether the mouse is moving.
+                PostMessageW(gameWnd, WM_EGOMP_CURSOR, wantExclusive ? 1 : 0, 0);
                 Log(wantExclusive ? "mouse grabbed (retail exclusive)"
                                   : "mouse released (drag/resize/switch windows)");
             }
@@ -196,17 +221,25 @@ namespace
     {
         switch (msg)
         {
-        case WM_SETCURSOR:
-            if (InterlockedExchange(&cursorCountFixed, 1) == 0)
+        case WM_EGOMP_CURSOR:
+            // Grab/release transition from the worker: set visibility now,
+            // without waiting for a mouse-move WM_SETCURSOR. The exclusive
+            // re-acquire does NOT hide the cursor on its own, so this explicit
+            // hide is what removes the arrow when you return to the game.
+            SetCursorHidden(wParam != 0);
+            if (wParam == 0)
             {
-                // Undo the game's one ShowCursor(FALSE) so the arrow can show
-                // while the grab is released; never leave the count above 0.
-                int count = ShowCursor(TRUE);
-                for (int i = 0; count < 0 && i < 16; ++i)
-                    count = ShowCursor(TRUE);
-                if (count > 0)
-                    ShowCursor(FALSE);
+                static HCURSOR arrow =
+                    LoadCursorW(nullptr, MAKEINTRESOURCEW(32512)); // IDC_ARROW
+                SetCursor(arrow);
             }
+            else
+            {
+                SetCursor(nullptr);
+            }
+            return 0;
+
+        case WM_SETCURSOR:
             if (LOWORD(lParam) == HTCLIENT)
             {
                 if (grabMode && !mouseExclusive)
@@ -346,6 +379,9 @@ namespace MouseUnlock
             }
             else if (!worker)
             {
+                // Normalise the initial (grabbed) state to hidden, in case the
+                // display count is not where Fable's init left it.
+                PostMessageW(gameWindow, WM_EGOMP_CURSOR, 1, 0);
                 worker = CreateThread(nullptr, 0, &ToggleWorker, nullptr, 0, nullptr);
                 if (worker)
                     CloseHandle(worker); // fire-and-forget for process life
