@@ -41,10 +41,33 @@
 //    would also paint over the CLIENT area on top of Fable's own rendered
 //    cursor. WM_SETCURSOR with HTCLIENT therefore hides it (SetCursor(NULL));
 //    every other hit zone keeps standard frame cursors.
-// Everything that is not WM_SETCURSOR is forwarded to the game untouched. The
-// earlier, backed-out experiment ran a move loop from a subclass while the
-// mouse was still exclusive -- the exclusivity is what broke the cursor, not
-// the subclassing.
+//
+// Cursor CONTAINMENT (the second half of the feature): a non-exclusive mouse
+// means the real Windows cursor moves again -- with pointer acceleration, so
+// it drifts apart from the game's DirectInput-driven cursor -- and once it
+// wanders outside the window, the next click lands elsewhere and the game
+// loses focus mid-fight. So while a game window is the active window, the OS
+// cursor is confined to its CLIENT area with ClipCursor:
+//  - Clicks can then never land outside the game, and the invisible cursor
+//    can never be seen gliding across the desktop.
+//  - The client area specifically, NOT the whole window: mouse-look presses
+//    the cursor against the clip boundary, and if the boundary were the title
+//    bar, an attack click with the cursor resting there would start a window
+//    drag instead.
+//  - HOLD ALT to release the lock for window management: the arrow becomes
+//    visible over the game so it can be steered onto the title bar (drag),
+//    the frame (resize), or another client's window (focus it). The lock
+//    re-engages when the cursor next rests on the client area with Alt up.
+//    Fable's WndProc already swallows VK_MENU syskeys (no menu loop), so Alt
+//    reaches the game exactly as before.
+//  - The lock also releases during DefWindowProc's move/size loop (otherwise
+//    the window could only be dragged as far as the old clip rect), when the
+//    window deactivates (alt-tab), and re-asserts on every client-area
+//    WM_SETCURSOR, which also heals races between two clients handing the
+//    (global) clip to each other.
+// Everything else is forwarded to the game untouched. The earlier, backed-out
+// experiment ran a move loop from a subclass while the mouse was still
+// exclusive -- the exclusivity is what broke the cursor, not the subclassing.
 
 namespace
 {
@@ -52,9 +75,62 @@ namespace
     WNDPROC  gameProc   = nullptr;
     volatile LONG cursorCountFixed = 0;
 
+    // Cursor-lock state. All of it is touched only on the window's thread
+    // (inside the subclassed WndProc), except the initial values set by
+    // OnWindowReady before messages start flowing through the hook.
+    bool windowActive = false; // game window is the active window
+    bool inSizeMove   = false; // inside DefWindowProc's move/size modal loop
+    bool weClipped    = false; // the current (global) ClipCursor rect is ours
+
     void Log(const char* msg)
     {
         std::cout << "[EgoMP][mouse] " << msg << std::endl;
+    }
+
+    bool AltHeld()
+    {
+        return (GetKeyState(VK_MENU) & 0x8000) != 0;
+    }
+
+    RECT ClientRectOnScreen(HWND hwnd)
+    {
+        RECT r = {};
+        GetClientRect(hwnd, &r);
+        POINT tl = { r.left, r.top }, br = { r.right, r.bottom };
+        ClientToScreen(hwnd, &tl);
+        ClientToScreen(hwnd, &br);
+        RECT s = { tl.x, tl.y, br.x, br.y };
+        return s;
+    }
+
+    bool WantLock()
+    {
+        return windowActive && !inSizeMove && !AltHeld();
+    }
+
+    void Lock(HWND hwnd)
+    {
+        RECT c = ClientRectOnScreen(hwnd);
+        if (ClipCursor(&c))
+            weClipped = true;
+    }
+
+    void Unlock()
+    {
+        if (weClipped)
+        {
+            ClipCursor(nullptr);
+            weClipped = false;
+        }
+    }
+
+    bool CursorInClient(HWND hwnd)
+    {
+        POINT p = {};
+        if (!GetCursorPos(&p))
+            return false;
+        RECT c = ClientRectOnScreen(hwnd);
+        return PtInRect(&c, p) != FALSE;
     }
 
     // mov edx,[eax] / push 5 / push ecx / push eax / call [edx+0x34]
@@ -78,8 +154,9 @@ namespace
 
     LRESULT CALLBACK HookProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     {
-        if (msg == WM_SETCURSOR)
+        switch (msg)
         {
+        case WM_SETCURSOR:
             if (InterlockedExchange(&cursorCountFixed, 1) == 0)
             {
                 // Undo the game's one ShowCursor(FALSE) so the arrow can show
@@ -92,9 +169,83 @@ namespace
             }
             if (LOWORD(lParam) == HTCLIENT)
             {
-                SetCursor(nullptr); // the game draws its own cursor here
+                if (WantLock())
+                {
+                    // (Re)assert the lock on every client-area mouse move.
+                    // This is also the deferred lock after a click-activate
+                    // or after Alt-release/drag-end outside the client.
+                    Lock(hwnd);
+                    SetCursor(nullptr); // the game draws its own cursor here
+                }
+                else
+                {
+                    // Window-management mode (Alt held / mid-drag): show the
+                    // real arrow so it can be steered onto a title bar.
+                    static HCURSOR arrow =
+                        LoadCursorW(nullptr, MAKEINTRESOURCEW(32512)); // IDC_ARROW
+                    SetCursor(arrow);
+                }
                 return TRUE;
             }
+            break;
+
+        case WM_ACTIVATE:
+            windowActive = LOWORD(wParam) != WA_INACTIVE;
+            if (!windowActive)
+                Unlock();
+            else if (LOWORD(wParam) == WA_ACTIVE && WantLock())
+                Lock(hwnd); // alt-tab back: recapture immediately. A
+                            // WA_CLICKACTIVE instead waits for the first
+                            // client WM_SETCURSOR, so a click on the caption
+                            // can start its drag without the cursor being
+                            // yanked into the client area first.
+            break;
+
+        case WM_ACTIVATEAPP:
+            if (!wParam)
+            {
+                windowActive = false;
+                Unlock();
+            }
+            break;
+
+        case WM_ENTERSIZEMOVE:
+            // Free the cursor for DefWindowProc's modal loop, or the window
+            // could only be dragged as far as the old clip rect allows.
+            inSizeMove = true;
+            Unlock();
+            break;
+
+        case WM_EXITSIZEMOVE:
+            inSizeMove = false; // relock on the next client-area hover
+            break;
+
+        case WM_WINDOWPOSCHANGED:
+            // Moved/resized programmatically (e.g. by the launcher): follow
+            // with the clip rect.
+            if (weClipped && WantLock())
+                Lock(hwnd);
+            break;
+
+        case WM_SYSKEYDOWN:
+        case WM_KEYDOWN:
+            if (wParam == VK_MENU)
+                Unlock();
+            break;
+
+        case WM_SYSKEYUP:
+        case WM_KEYUP:
+            // Alt released alone arrives as WM_KEYUP, after combos as
+            // WM_SYSKEYUP -- handle both. Only relock when the cursor is
+            // already back over the game, so releasing Alt out on the
+            // desktop doesn't yank it home.
+            if (wParam == VK_MENU && WantLock() && CursorInClient(hwnd))
+                Lock(hwnd);
+            break;
+
+        case WM_DESTROY:
+            Unlock();
+            break;
         }
         return CallWindowProcW(gameProc, hwnd, msg, wParam, lParam);
     }
@@ -122,9 +273,16 @@ namespace MouseUnlock
         if (!active || !gameWindow || gameProc)
             return;
 
+        windowActive = (GetForegroundWindow() == gameWindow);
         gameProc = (WNDPROC)SetWindowLongPtrW(gameWindow, GWLP_WNDPROC,
                                               (LONG_PTR)&HookProc);
-        Log(gameProc ? "cursor fix installed (arrow on frame, hidden in game)"
-                     : "failed to subclass the game window");
+        if (!gameProc)
+        {
+            Log("failed to subclass the game window");
+            return;
+        }
+        if (WantLock())
+            Lock(gameWindow);
+        Log("cursor locked to the game (hold ALT to release it)");
     }
 }
