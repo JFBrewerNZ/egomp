@@ -28,10 +28,17 @@ public:
     int  windowWidth   = 0;
     int  windowHeight  = 0;
 
-    // Force Fable's DirectInput mouse to non-exclusive so Windows handles the
-    // title bar again (drag to move, edge resize, close button). Absent from
-    // the ini it follows reshape; 0/1 override explicitly.
+    // Make the game window manageable with the mouse (drag the title bar,
+    // resize, click between clients) despite Fable's DirectInput mouse grab.
+    // Absent from the ini it follows reshape; 0/1 override explicitly.
     bool mouseUnlock = true;
+
+    // How mouse_unlock frees the mouse. 1 (default): keep the retail
+    // exclusive grab while playing and release it only while Alt is held.
+    // 0: make the mouse permanently shared -- dragging works without Alt,
+    // but the Windows cursor roams during play and a click outside the
+    // window steals the game's focus.
+    bool mouseLock = true;
 
     // Give each client on this machine its own Documents\My Games\Fable so the
     // clients don't collide on save/tattoo files. Each launch gets its own
