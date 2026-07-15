@@ -145,6 +145,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Config\Config.h" />
+    <ClInclude Include="Display\WindowedMode.h" />
+    <ClInclude Include="Platform\SaveRedirect.h" />
     <ClInclude Include="DevTools\EquipmentProbe.h" />
     <ClInclude Include="DevTools\ActionTracer.h" />
     <ClInclude Include="DevTools\ObjectInspector.h" />
@@ -190,6 +192,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Config\Config.cpp" />
+    <ClCompile Include="Display\WindowedMode.cpp" />
+    <ClCompile Include="Platform\SaveRedirect.cpp" />
     <ClCompile Include="DevTools\EquipmentProbe.cpp" />
     <ClCompile Include="DevTools\ActionTracer.cpp" />
     <ClCompile Include="DevTools\ObjectInspector.cpp" />

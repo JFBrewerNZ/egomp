@@ -29,6 +29,13 @@ Config::Config()
 
     hostPort = (unsigned short)GetPrivateProfileIntA("host", "port", hostPort, iniPath.c_str());
 
+    windowed = GetPrivateProfileIntA("display", "windowed", windowed ? 1 : 0, iniPath.c_str()) != 0;
+
+    separateSaves = GetPrivateProfileIntA("storage", "separate_saves", separateSaves ? 1 : 0, iniPath.c_str()) != 0;
+    char dir[512] = {};
+    GetPrivateProfileStringA("storage", "data_root", dataRoot.c_str(), dir, sizeof(dir), iniPath.c_str());
+    dataRoot = dir;
+
     showConsole = GetPrivateProfileIntA("general", "console", showConsole ? 1 : 0, iniPath.c_str()) != 0;
     debugKeys = GetPrivateProfileIntA("general", "debug_keys", debugKeys ? 1 : 0, iniPath.c_str()) != 0;
 }

@@ -32,6 +32,16 @@ Manual controls (all settings come from `EgoMP.ini`; nothing is ever typed into 
 
 The EgoMP console window is only a log — it starts minimized and can be hidden entirely with `console=0`.
 
+## 🧪 Running two clients on one machine
+
+For local multiplayer testing you can run the game twice on the same PC: just launch `EgoMP.exe` a second time. Two things make this work, both handled automatically:
+
+- **Single-instance bypass.** Fable's `WinMain` bails when it finds its `Global\Fable: The Lost Chapters` mutex already held. The mod rewrites that check (the `jne` at `0x4034AA`) to `xor eax, eax`, which both lets the second instance continue *and* preserves the `eax == 0` the following `CreateMutexW` call relies on. (A plain `NOP` there leaves the existing mutex handle in `eax`, which `CreateMutexW` then dereferences as its attributes pointer — an instant crash in `KERNELBASE!BaseFormatObjectAttributes`. That was the "second client closes itself" bug.)
+- **Windowed mode** (`[display] windowed=1`, on by default). Two *fullscreen* instances fight over the exclusive display, so the mod forces Direct3D to create a windowed device. The window is borderless and screen-sized — alt-tab to switch between the two clients. Set `windowed=0` for the normal fullscreen experience when playing solo.
+- **A separate save folder per client** (`[storage] separate_saves=1`, on by default). Fable resolves its data folder with `SHGetFolderPathW(CSIDL_PERSONAL)` → `Documents\My Games\Fable`, which is identical for every client of the same Windows user. Two clients then write the same files — notably a shared hero's `Tattoos\<id>\*.bmp` — and the second one crashes on world load. The mod gives each launch its own number and redirects its Documents to `<data_root>\Client<N>` (default `data_root` = `%LOCALAPPDATA%\EgoMP`). The first running client is `Client1`, the next `Client2`, and so on; closing a client frees its number for reuse.
+
+Each `Client<N>` folder starts empty, so it won't list your existing heroes. To populate one, copy `…\My Games\Fable\Saves` (and `…\Tattoos`) from your real Documents into `%LOCALAPPDATA%\EgoMP\Client<N>\My Games\Fable\`, or just create a fresh hero there. (Two separate heroes is usually what you want for multiplayer testing anyway.)
+
 ## 🖥 Dedicated Server (experimental)
 
 `EgoMPServer.exe` is a standalone session server — it needs no copy of the game and can run on any Windows machine or VPS. It assigns player ids, remembers who is where, and relays player updates; each connected client keeps simulating its own world.
