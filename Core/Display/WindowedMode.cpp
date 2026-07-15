@@ -1,5 +1,8 @@
 #include "WindowedMode.h"
 
+#include "../Config/Config.h"
+#include "../Platform/ClientSlot.h"
+
 #include <windows.h>
 #include <d3d9.h>
 #include <iostream>
@@ -10,13 +13,12 @@
 // display. Two fullscreen instances fight over exclusive ownership; a windowed
 // device takes none, so both coexist.
 //
-// We deliberately do NOT touch the game's window (style/size/position).
-// Restyling it during device creation makes Fable's own window/DirectX init
-// think it failed, and Fable responds by relaunching itself into a second,
-// un-modded process that then dies on the single-instance mutex. So we only
-// flip the present-parameters and leave the window exactly as the game built
-// it -- the result is a borderless, screen-sized window (alt-tab between the
-// two clients).
+// Window shaping (a titled, movable, resizable window placed side by side) is
+// OPT-IN and applied LATE. Restyling the window *during* device creation makes
+// Fable's own window/DirectX init think it failed and relaunch into a second,
+// un-modded process. So we wait until a few frames have rendered -- well past
+// that init check -- and only then reshape, from the render thread (which owns
+// the window), via a Present hook.
 //
 // The game statically imports d3d9.dll, so Direct3DCreate9 is resolvable the
 // moment we attach. We hook the export (safe under the loader lock) and only
@@ -37,23 +39,40 @@ namespace
     // IDirect3D9 / IDirect3DDevice9 vtable slots (after the 3 IUnknown ones).
     constexpr int kCreateDeviceSlot = 16; // IDirect3D9::CreateDevice
     constexpr int kResetSlot        = 16; // IDirect3DDevice9::Reset
+    constexpr int kPresentSlot      = 17; // IDirect3DDevice9::Present
+
+    // Frames to let the game render before we reshape its window (safely past
+    // Fable's post-CreateDevice init check).
+    constexpr int kReshapeAfterFrames = 60;
 
     using Direct3DCreate9_t = IDirect3D9*(WINAPI*)(UINT);
     using CreateDevice_t    = HRESULT(STDMETHODCALLTYPE*)(IDirect3D9*, UINT, D3DDEVTYPE, HWND,
                                                           DWORD, D3DPRESENT_PARAMETERS*,
                                                           IDirect3DDevice9**);
     using Reset_t           = HRESULT(STDMETHODCALLTYPE*)(IDirect3DDevice9*, D3DPRESENT_PARAMETERS*);
+    using Present_t         = HRESULT(STDMETHODCALLTYPE*)(IDirect3DDevice9*, const RECT*, const RECT*,
+                                                         HWND, const RGNDATA*);
 
     Direct3DCreate9_t oDirect3DCreate9 = nullptr;
     CreateDevice_t    oCreateDevice    = nullptr;
     Reset_t           oReset           = nullptr;
+    Present_t         oPresent         = nullptr;
 
     bool createDeviceHooked = false;
     bool resetHooked        = false;
+    bool presentHooked      = false;
 
     // Desktop pixel format, captured at device creation; reused when the game
     // resets the device so windowed Reset stays format-compatible.
     D3DFORMAT desktopFormat = D3DFMT_X8R8G8B8;
+
+    // Window reshaping (opt-in via [display] reshape).
+    bool reshapeEnabled = false;
+    int  cfgWidth       = 0; // client size; 0 = auto
+    int  cfgHeight      = 0;
+    HWND gameWindow     = nullptr;
+    bool reshapeApplied = false;
+    int  frameCount     = 0;
 
     void Log(const char* msg)
     {
@@ -69,6 +88,63 @@ namespace
         pp->BackBufferFormat = desktopFormat;
     }
 
+    // Turn the game's borderless window into a titled, movable, resizable one,
+    // sized from config and tiled by client number so clients sit side by side.
+    // The backbuffer keeps its own resolution; D3D scales it to the window.
+    void ReshapeWindow()
+    {
+        if (!gameWindow || !IsWindow(gameWindow))
+            return;
+
+        const int screenW = GetSystemMetrics(SM_CXSCREEN);
+        const int screenH = GetSystemMetrics(SM_CYSCREEN);
+        int clientW = cfgWidth  > 0 ? cfgWidth  : screenW / 2;      // side by side
+        int clientH = cfgHeight > 0 ? cfgHeight : (screenH * 9 / 10);
+
+        const DWORD style = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+        SetWindowLongW(gameWindow, GWL_STYLE, style);
+        SetWindowLongW(gameWindow, GWL_EXSTYLE,
+                       GetWindowLongW(gameWindow, GWL_EXSTYLE) & ~WS_EX_TOPMOST);
+
+        RECT r = { 0, 0, clientW, clientH };
+        AdjustWindowRect(&r, style, FALSE);
+        const int winW = r.right - r.left;
+        const int winH = r.bottom - r.top;
+
+        int n = ClientSlot::Number();
+        if (n < 1) n = 1;
+        const int cols = winW > 0 ? (screenW / winW) : 1;
+        const int idx  = n - 1;
+        int x = (cols > 0 ? (idx % cols) : 0) * winW;
+        int y = (cols > 0 ? (idx / cols) : idx) * winH;
+        if (x + winW > screenW) x = screenW - winW;
+        if (y + winH > screenH) y = screenH - winH;
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+
+        SetWindowPos(gameWindow, HWND_NOTOPMOST, x, y, winW, winH,
+                     SWP_NOACTIVATE | SWP_FRAMECHANGED);
+
+        wchar_t title[64];
+        swprintf_s(title, L"Fable - EgoMP Client %d", n);
+        SetWindowTextW(gameWindow, title);
+
+        char buf[96];
+        sprintf_s(buf, "reshaped client %d window to %dx%d at (%d,%d)", n, clientW, clientH, x, y);
+        Log(buf);
+    }
+
+    HRESULT STDMETHODCALLTYPE HPresent(IDirect3DDevice9* device, const RECT* src, const RECT* dst,
+                                       HWND destWindow, const RGNDATA* dirty)
+    {
+        if (reshapeEnabled && !reshapeApplied && gameWindow && ++frameCount >= kReshapeAfterFrames)
+        {
+            ReshapeWindow();
+            reshapeApplied = true;
+        }
+        return oPresent(device, src, dst, destWindow, dirty);
+    }
+
     HRESULT STDMETHODCALLTYPE HReset(IDirect3DDevice9* device, D3DPRESENT_PARAMETERS* pp)
     {
         if (pp)
@@ -76,18 +152,17 @@ namespace
         return oReset(device, pp);
     }
 
-    void InstallResetHook(IDirect3DDevice9* device)
+    void HookDeviceMethod(IDirect3DDevice9* device, int slot, void* detour, void** original,
+                          bool& flag, const char* label)
     {
-        if (resetHooked || !device)
+        if (flag || !device)
             return;
         void** vtbl = *reinterpret_cast<void***>(device);
-        void* target = vtbl[kResetSlot];
-        if (MH_CreateHook(target, reinterpret_cast<void*>(&HReset),
-                          reinterpret_cast<void**>(&oReset)) == MH_OK &&
-            MH_EnableHook(target) == MH_OK)
+        void* target = vtbl[slot];
+        if (MH_CreateHook(target, detour, original) == MH_OK && MH_EnableHook(target) == MH_OK)
         {
-            resetHooked = true;
-            Log("Reset hooked (stays windowed across device resets)");
+            flag = true;
+            Log(label);
         }
     }
 
@@ -104,6 +179,8 @@ namespace
         D3DDISPLAYMODE dm = {};
         if (SUCCEEDED(d3d->GetAdapterDisplayMode(adapter, &dm)))
             desktopFormat = dm.Format;
+
+        gameWindow = pp->hDeviceWindow ? pp->hDeviceWindow : focusWindow;
 
         // Attempt 1: windowed, keeping the game's other parameters.
         ForceWindowed(pp);
@@ -142,7 +219,15 @@ namespace
         }
 
         if (SUCCEEDED(hr) && returnedDevice && *returnedDevice)
-            InstallResetHook(*returnedDevice);
+        {
+            HookDeviceMethod(*returnedDevice, kResetSlot, reinterpret_cast<void*>(&HReset),
+                             reinterpret_cast<void**>(&oReset), resetHooked,
+                             "Reset hooked (stays windowed across device resets)");
+            if (reshapeEnabled)
+                HookDeviceMethod(*returnedDevice, kPresentSlot, reinterpret_cast<void*>(&HPresent),
+                                 reinterpret_cast<void**>(&oPresent), presentHooked,
+                                 "Present hooked (will reshape the window shortly)");
+        }
 
         return hr;
     }
@@ -174,6 +259,10 @@ namespace WindowedMode
 {
     void Install()
     {
+        reshapeEnabled = Config::Get().reshapeWindow;
+        cfgWidth       = Config::Get().windowWidth;
+        cfgHeight      = Config::Get().windowHeight;
+
         HMODULE d3d9 = GetModuleHandleW(L"d3d9.dll");
         if (!d3d9)
             d3d9 = LoadLibraryW(L"d3d9.dll");
@@ -198,6 +287,6 @@ namespace WindowedMode
             return;
         }
 
-        Log("armed (game will start in a window)");
+        Log(reshapeEnabled ? "armed (windowed + reshape)" : "armed (windowed)");
     }
 }

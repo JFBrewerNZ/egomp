@@ -15,10 +15,18 @@ public:
 
     unsigned short hostPort = 60000;
 
-    // Force the game into a (borderless) window (see [display] in EgoMP.ini).
-    // Recommended when running two clients on one machine so they don't fight
-    // over the exclusive fullscreen display.
+    // Force the game into a window (see [display] in EgoMP.ini). Recommended
+    // when running two clients on one machine so they don't fight over the
+    // exclusive fullscreen display.
     bool windowed = true;
+
+    // Reshape the game window into a titled, movable, resizable window placed
+    // side by side by client number (applied a few frames in, so it doesn't
+    // trip Fable's init-failure relaunch). windowWidth/windowHeight are the
+    // client size in pixels; 0 = auto (half the screen width, ~90% height).
+    bool reshapeWindow = true;
+    int  windowWidth   = 0;
+    int  windowHeight  = 0;
 
     // Give each client on this machine its own Documents\My Games\Fable so the
     // clients don't collide on save/tattoo files. Each launch gets its own
@@ -26,6 +34,12 @@ public:
     // %LOCALAPPDATA%\EgoMP.
     bool separateSaves = true;
     std::string dataRoot = "";
+
+    // Seed a brand-new client folder from a template so it isn't empty.
+    // seedFrom is the "My Games\Fable" to copy; empty = "<dataRoot>\Template\
+    // My Games\Fable". Set seedNewClients = 0 to turn seeding off entirely.
+    bool seedNewClients = true;
+    std::string seedFrom = "";
 
     bool showConsole = true;
 

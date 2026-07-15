@@ -27,6 +27,9 @@
     <ClInclude Include="Platform\SaveRedirect.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Platform\ClientSlot.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="DevTools\EquipmentProbe.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -168,6 +171,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Platform\SaveRedirect.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Platform\ClientSlot.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="SDK\Fable\Game.cpp">

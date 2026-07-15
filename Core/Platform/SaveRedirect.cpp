@@ -1,6 +1,7 @@
 #include "SaveRedirect.h"
 
 #include "../Config/Config.h"
+#include "ClientSlot.h"
 
 #include <windows.h>
 #include <string>
@@ -13,16 +14,10 @@
 namespace
 {
     constexpr int kCsidlPersonal = 0x0005; // CSIDL_PERSONAL == the Documents folder
-    constexpr int kMaxClients    = 64;
 
     using SHGetFolderPathW_t = HRESULT(WINAPI*)(HWND, int, HANDLE, DWORD, LPWSTR);
     SHGetFolderPathW_t oSHGetFolderPathW = nullptr;
 
-    // A per-client slot mutex, held for the life of the process to reserve this
-    // client's number. Intentionally never closed: the OS releases it on exit,
-    // which frees the slot for the next client to reuse.
-    HANDLE       slotHandle   = nullptr;
-    int          clientNumber = 0;
     std::wstring redirectBase; // replaces the Documents path for this client
 
     void Log(const std::string& msg)
@@ -43,28 +38,33 @@ namespace
         }
     }
 
-    // Claim the lowest free client number by grabbing the first slot mutex that
-    // no other running client already holds. CreateMutexW is atomic, so a race
-    // between two launches resolves cleanly (one gets the slot, the other moves
-    // on to the next number).
-    int ClaimClientSlot()
+    // Recursively copy a directory tree (overwriting). CopyFileW hydrates
+    // OneDrive placeholders as it reads them.
+    void CopyDirTree(const std::wstring& src, const std::wstring& dst)
     {
-        for (int n = 1; n <= kMaxClients; ++n)
+        CreateDirTree(dst);
+        WIN32_FIND_DATAW fd;
+        HANDLE h = FindFirstFileW((src + L"\\*").c_str(), &fd);
+        if (h == INVALID_HANDLE_VALUE)
+            return;
+        do
         {
-            wchar_t name[64];
-            swprintf_s(name, L"EgoMP-Client-Slot-%d", n);
-            HANDLE h = CreateMutexW(nullptr, FALSE, name);
-            if (!h)
+            const std::wstring name = fd.cFileName;
+            if (name == L"." || name == L"..")
                 continue;
-            if (GetLastError() == ERROR_ALREADY_EXISTS)
-            {
-                CloseHandle(h); // held by another client; try the next number
-                continue;
-            }
-            slotHandle = h; // keep open -> hold this slot until we exit
-            return n;
-        }
-        return 0;
+            const std::wstring s = src + L"\\" + name;
+            const std::wstring d = dst + L"\\" + name;
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                CopyDirTree(s, d);
+            else
+                CopyFileW(s.c_str(), d.c_str(), FALSE);
+        } while (FindNextFileW(h, &fd));
+        FindClose(h);
+    }
+
+    bool PathExists(const std::wstring& p)
+    {
+        return GetFileAttributesW(p.c_str()) != INVALID_FILE_ATTRIBUTES;
     }
 
     HRESULT WINAPI HSHGetFolderPathW(HWND hwnd, int csidl, HANDLE token, DWORD flags, LPWSTR out)
@@ -97,6 +97,28 @@ namespace
         if (n > 0) WideCharToMultiByte(CP_ACP, 0, w.c_str(), -1, &s[0], n, nullptr, nullptr);
         return s;
     }
+
+    // Copy the seed template into a brand-new client folder, so a fresh client
+    // starts with the hero(es) from the template instead of empty.
+    void SeedIfNew(const std::wstring& root)
+    {
+        if (!Config::Get().seedNewClients)
+            return;
+        const std::wstring fableDir = redirectBase + L"\\My Games\\Fable";
+        if (PathExists(fableDir))
+            return; // already populated; leave it alone
+
+        std::wstring seedFrom = Widen(Config::Get().seedFrom);
+        if (seedFrom.empty())
+            seedFrom = root + L"\\Template\\My Games\\Fable";
+        if (!PathExists(seedFrom))
+        {
+            Log("no seed template at " + Narrow(seedFrom) + "; new client starts empty");
+            return;
+        }
+        Log("seeding new client from " + Narrow(seedFrom));
+        CopyDirTree(seedFrom, fableDir);
+    }
 }
 
 namespace SaveRedirect
@@ -106,9 +128,7 @@ namespace SaveRedirect
         if (!Config::Get().separateSaves)
             return;
 
-        // Assign this launch a client number: 1 for the first running client, 2
-        // for the next, and so on (freed numbers are reused).
-        clientNumber = ClaimClientSlot();
+        const int clientNumber = ClientSlot::Number();
         if (clientNumber == 0)
         {
             Log("no free client slot; using the shared save location");
@@ -130,6 +150,10 @@ namespace SaveRedirect
             return;
         }
         redirectBase = root + L"\\Client" + std::to_wstring(clientNumber);
+
+        // Populate a fresh client folder from the template before the game reads
+        // it (we run at attach, before the game resolves any folder).
+        SeedIfNew(root);
 
         HMODULE shell32 = GetModuleHandleW(L"shell32.dll");
         if (!shell32)
