@@ -12,6 +12,7 @@ document cites where its facts came from.
 | [def-system.md](def-system.md) | The CompiledDefs definition system: def types, CRC-hashed field IDs, entry-ID lists, hidden in-game scaling constants, quest-gated TNG sections. |
 | [community-resources.md](community-resources.md) | Tool catalog with links, modding-community docs, multiplayer prior art, and the high-value research backlog (Mac debug symbols, RTTI dump, Fable SDK). |
 | [data/](data/README.md) | Machine-readable reference data: the full RTTI class→vtable table (2090 classes) and 13 def-name lists (objects, creatures, brains, holy sites, player modes…) for use in code. |
+| [platform-fixes.md](platform-fixes.md) | Community fixes for the platform-level problems under EgoMP — AMD load crash, windowed mode, cursor, multi-core timing — and how EgoMP integrates with them (dgVoodoo2 coexistence, built-in CPU affinity). |
 
 Our own first-party reverse engineering lives in
 [`../Tools/RE-NOTES.md`](../Tools/RE-NOTES.md) (equipment/inventory/animation/
