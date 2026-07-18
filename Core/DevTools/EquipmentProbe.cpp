@@ -647,6 +647,20 @@ namespace EquipmentProbe
 
         char buf[320];
 
+        // Carried-visual readout (the crossbow-floor investigation, 2026-07-18):
+        // weapon-def +0x38 = the def index of the on-back visual, 0 = none.
+        // Equip a longbow then a crossbow and press NUMPAD8 to compare: the
+        // longbow's ranged backVisual should be > 0, the crossbow's == 0.
+        {
+            int m = weapons->GetCarriedMeleeDefIndex();
+            int r = weapons->GetCarriedRangedDefIndex();
+            sprintf_s(buf, "[CarriedVisual] melee def %d -> backVisual %d | "
+                "ranged def %d -> backVisual %d  (>0 shows on back, 0 = none)",
+                m, CTCInventoryWeapons::GetCarriedVisualDefIndex(m),
+                r, CTCInventoryWeapons::GetCarriedVisualDefIndex(r));
+            ObjectInspector::LogLine(buf);
+        }
+
         CThing* original = weapons->GetCarriedMeleeThing();
         int carriedDef = weapons->GetCarriedMeleeDefIndex();
 

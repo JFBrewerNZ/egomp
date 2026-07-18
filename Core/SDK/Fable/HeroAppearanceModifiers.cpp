@@ -323,6 +323,28 @@ int CTCInventoryWeapons::GetCarriedRangedDefIndex()
     return CarriedWeaponDefIndex(this, WEAPON_RANGED_HOLDER_OFFSET);
 }
 
+// weapon-def + 0x38 = the def index of the on-back visual (0 = no back
+// visual). See RE-NOTES "Carried-weapon visuals".
+static const size_t WEAPON_DEF_CARRIED_VISUAL_OFFSET = 0x38;
+
+int CTCInventoryWeapons::GetCarriedVisualDefIndex(int weaponDefGlobalIndex)
+{
+    CDefinitionManager* defMgr = CDefinitionManager::Get();
+    if (!defMgr)
+        return -1;
+    void* def = defMgr->GetDefObjectByIndex(weaponDefGlobalIndex);
+    if (!def)
+        return -1;
+    __try
+    {
+        return *(int*)((char*)def + WEAPON_DEF_CARRIED_VISUAL_OFFSET);
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        return -1;
+    }
+}
+
 CThing* CTCInventoryWeapons::GetCarriedMeleeThing()
 {
     void* holder = (char*)this + WEAPON_MELEE_HOLDER_OFFSET;

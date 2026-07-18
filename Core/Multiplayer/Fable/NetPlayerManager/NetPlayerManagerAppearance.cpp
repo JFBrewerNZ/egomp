@@ -184,15 +184,21 @@ namespace
 {
     // SEH-isolated holster + visual build (no unwindable locals).
     bool GuardedHolsterAndRestore(CTCInventoryWeapons* weapons,
-        CThing* melee, CThing* ranged, unsigned long* exceptionCode)
+        CThing* melee, CThing* ranged, bool clearMelee, bool clearRanged,
+        unsigned long* exceptionCode)
     {
         *exceptionCode = 0;
         __try
         {
             if (melee)
                 weapons->SetCarriedMeleeWeapon(melee);
+            else if (clearMelee)
+                weapons->SetCarriedMeleeWeapon(nullptr);
+
             if (ranged)
                 weapons->SetCarriedRangedWeapon(ranged);
+            else if (clearRanged)
+                weapons->SetCarriedRangedWeapon(nullptr);
 
             // The build branch directly: RegenerateCarriedWeapons routes to
             // the CLEAR path on puppets (their CTCHero weapons-visible byte
@@ -262,26 +268,44 @@ void NetPlayerManager::ApplyNetPlayerWeapons(NetPlayer& netPlayer)
     bool meleeWanted = melee > 0 && melee != netPlayer.GetAppliedMeleeWeaponDef();
     bool rangedWanted = ranged > 0 && ranged != netPlayer.GetAppliedRangedWeaponDef();
 
-    if (meleeWanted)
+    // A weapon whose def has no on-back visual (def+0x38 == 0 — a crossbow)
+    // must NOT get a carried weapon: the game builds no back model for it, so
+    // the factory-created weapon object is left at the puppet's feet (the
+    // "crossbows on the floor" bug). Skip creation for it, and clear any stale
+    // back visual (e.g. switching from a longbow to a crossbow). Only act on a
+    // POSITIVE zero — a failed read returns -1 and falls back to creating, so
+    // a misread can never silently drop a longbow or sword.
+    int meleeBackVisual = CTCInventoryWeapons::GetCarriedVisualDefIndex(melee);
+    int rangedBackVisual = CTCInventoryWeapons::GetCarriedVisualDefIndex(ranged);
+    bool meleeNoBackVisual = meleeWanted && meleeBackVisual == 0;
+    bool rangedNoBackVisual = rangedWanted && rangedBackVisual == 0;
+
+    if (meleeWanted && !meleeNoBackVisual)
         meleeWeapon = weapons->CreateCarriedWeaponUnchecked(melee, &meleeException, &meleeFaultAddress);
 
-    if (rangedWanted)
+    if (rangedWanted && !rangedNoBackVisual)
         rangedWeapon = weapons->CreateCarriedWeaponUnchecked(ranged, &rangedException, &rangedFaultAddress);
 
     unsigned long restoreException = 0;
-    bool ok = (meleeWeapon || rangedWeapon)
-        && GuardedHolsterAndRestore(weapons, meleeWeapon, rangedWeapon, &restoreException);
+    bool needRestore = meleeWeapon || rangedWeapon || meleeNoBackVisual || rangedNoBackVisual;
+    bool ok = needRestore
+        && GuardedHolsterAndRestore(weapons, meleeWeapon, rangedWeapon,
+            meleeNoBackVisual, rangedNoBackVisual, &restoreException);
 
-    int newAppliedMelee = (meleeWeapon || !meleeWanted) ? melee : netPlayer.GetAppliedMeleeWeaponDef();
-    int newAppliedRanged = (rangedWeapon || !rangedWanted) ? ranged : netPlayer.GetAppliedRangedWeaponDef();
+    // Mark a slot applied when we created it OR deliberately skipped it (no
+    // back visual) — so a crossbow doesn't retry forever.
+    int newAppliedMelee = (meleeWeapon || !meleeWanted || meleeNoBackVisual) ? melee : netPlayer.GetAppliedMeleeWeaponDef();
+    int newAppliedRanged = (rangedWeapon || !rangedWanted || rangedNoBackVisual) ? ranged : netPlayer.GetAppliedRangedWeaponDef();
     netPlayer.SetAppliedWeaponDefs(newAppliedMelee, newAppliedRanged);
 
-    char line[360];
-    sprintf_s(line, "[NetPlayerManager] Player %d weapons: melee %d (%s exc %08lX @%p),"
-        " ranged %d (%s exc %08lX @%p), heroFlag %s, visuals %s (exc %08lX), attempt %d",
+    char line[420];
+    sprintf_s(line, "[NetPlayerManager] Player %d weapons: melee %d (%s, back %d exc %08lX @%p),"
+        " ranged %d (%s, back %d exc %08lX @%p), heroFlag %s, visuals %s (exc %08lX), attempt %d",
         netPlayer.GetNetworkId(),
-        melee, meleeWeapon ? "created" : "-", meleeException, meleeFaultAddress,
-        ranged, rangedWeapon ? "created" : "-", rangedException, rangedFaultAddress,
+        melee, meleeNoBackVisual ? "no-back-skip" : (meleeWeapon ? "created" : "-"),
+        meleeBackVisual, meleeException, meleeFaultAddress,
+        ranged, rangedNoBackVisual ? "no-back-skip" : (rangedWeapon ? "created" : "-"),
+        rangedBackVisual, rangedException, rangedFaultAddress,
         flagSet ? "set" : "MISSING",
         ok ? "restored" : "skipped/FAILED", restoreException,
         netPlayer.GetWeaponApplyAttempts());

@@ -125,6 +125,19 @@ public:
     int GetCarriedMeleeDefIndex();
     int GetCarriedRangedDefIndex();
 
+    // Whether a weapon def has an on-back/sheathed visual. The carried-weapon
+    // builder (0x5C36C2) reads weapon-def +0x38 = the def index of the
+    // on-back visual object, and skips building anything when it is 0. Swords
+    // and longbows have one; crossbows do not (def+0x38 == 0), which is why
+    // crossbows never show on a hero's back. Returns the +0x38 value (>0 has a
+    // visual, 0 has none), or -1 if the def couldn't be read. SEH-guarded and
+    // static — needs only the def index.
+    static int GetCarriedVisualDefIndex(int weaponDefGlobalIndex);
+    static bool WeaponHasCarriedVisual(int weaponDefGlobalIndex)
+    {
+        return GetCarriedVisualDefIndex(weaponDefGlobalIndex) > 0;
+    }
+
     // The carried melee weapon CThing itself (holder deref), or nullptr.
     CThing* GetCarriedMeleeThing();
 
