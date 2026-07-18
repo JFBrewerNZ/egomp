@@ -9,6 +9,12 @@ Experimental multiplayer mod for [Fable: The Lost Chapters](https://en.wikipedia
 >
 > It is primarily intended for developers, reverse engineers, and early testers.
 
+## 📚 Knowledgebase
+
+Reverse-engineering and community knowledge lives in [`docs/`](docs/README.md)
+(engine addresses, file formats, the def system, tool catalog, research
+backlog) and first-party findings in [`Tools/RE-NOTES.md`](Tools/RE-NOTES.md).
+
 ## 🛠 Technical Stack
 
 - **Language:** C++
