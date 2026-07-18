@@ -59,6 +59,12 @@ public:
     // not for distributed builds.
     bool debugKeys = false;
 
+    // Crash diagnostics: log every C++ throw (exception type + stack), recent
+    // file opens, and a one-shot minidump to EgoMP-crash-<pid>.log/.dmp next
+    // to the DLL. Cheap and passive; on by default while the second-client
+    // world-load crash is under investigation.
+    bool crashDiag = true;
+
 private:
     Config();
 };

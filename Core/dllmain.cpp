@@ -2,6 +2,7 @@
 #include <iostream>
 
 #include "./Config/Config.h"
+#include "./DevTools/CrashDiag.h"
 #include "./Display/MouseUnlock.h"
 #include "./Display/WindowedMode.h"
 #include "./Platform/SaveRedirect.h"
@@ -103,6 +104,12 @@ BOOL APIENTRY DllMain( HMODULE hModule,
             // Give a second client its own save folder so the two clients don't
             // collide on Documents\My Games\Fable. Also before the game runs.
             SaveRedirect::Install();
+
+            // Crash diagnostics (EgoMP-crash-<pid>.log/.dmp): names every C++
+            // exception the game throws and keeps a ring of recent file opens.
+            // After SaveRedirect so the header reports the claimed slot; needs
+            // MinHook, initialised by Multiplayer::GetInstance() above.
+            CrashDiag::Install();
             break;
         }
         case DLL_THREAD_ATTACH:

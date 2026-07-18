@@ -48,4 +48,5 @@ Config::Config()
 
     showConsole = GetPrivateProfileIntA("general", "console", showConsole ? 1 : 0, iniPath.c_str()) != 0;
     debugKeys = GetPrivateProfileIntA("general", "debug_keys", debugKeys ? 1 : 0, iniPath.c_str()) != 0;
+    crashDiag = GetPrivateProfileIntA("general", "crash_diag", crashDiag ? 1 : 0, iniPath.c_str()) != 0;
 }

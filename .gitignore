@@ -427,3 +427,7 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# EgoMP crash diagnostics output (next to the deployed DLL)
+EgoMP-crash-*.log
+EgoMP-crash-*.dmp
