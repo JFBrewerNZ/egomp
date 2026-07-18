@@ -25,6 +25,20 @@ Dormant online/co-op classes worth investigating for Fable Online:
 `CTCCoopSpirit 0x0125B264`, `CCoopSpiritDef 0x01232214`,
 `CTCHeroOnlineScoreboard 0x0124DB34`.
 
+## `symbols.tsv` — consolidated address↔name database (2350 symbols)
+
+Every address we can name, in one place: 251 named engine **functions** (from
+FableMenu, with calling convention), 2090 class **vtables** (from the RTTI
+dump), and curated **statics**. Columns: `addr  name  kind  conv  source`.
+This is what [`../../Tools/symbolize.py`](../../Tools/symbolize.py) reads to
+turn crash-log frames into function names. Regenerate with
+[`../../Tools/build_symbols.py`](../../Tools/build_symbols.py).
+
+```sh
+awk -F'\t' '$2=="CreateThing"{print $1}' symbols.tsv        # address of a function
+awk -F'\t' '$3=="func" && $2!~/^sub_/' symbols.tsv | wc -l  # count named functions
+```
+
 ## Def-name tables (from FableMenu `plugin/Database.cpp`)
 
 Plain name lists, one per line. Resolve any name to its runtime def global
