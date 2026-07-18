@@ -97,7 +97,11 @@ dropped). Forum thread URL pattern:
    is correct. But CTCCoopSpirit and CTCHeroOnlineScoreboard are **live**
    Thing Components with real logic — the co-op spirit is a genuine
    second-entity primitive worth building on.
-6. **Debug console resurrection**: CConsole::Initialise at 0x9ED190 is intact
-   in retail — enabling it would give us a free in-game command surface
-   (FableMenu's retail-debug-bool list proves the console-backed globals still
-   work).
+6. **Debug console resurrection** — LIKELY A DEAD END. `CConsole::Initialise`
+   (0x9ED190) is intact, but blastedt found the console *render* function
+   immediately exits with no code, and confirmed the same on the Mac build
+   (th=71721) — so the console can init but can't draw itself. The
+   console-backed globals still work (FableMenu drives them directly), so the
+   value here is the globals, not a text console; an ImGui overlay
+   (engine-internals.md) is the better command surface. Only worth revisiting
+   if a way to supply the console its own renderer turns up.
