@@ -51,3 +51,12 @@ Example — the crossbow family (relevant to the weapon-replication "items on
 the floor" bug) is in `objects.txt`: `OBJECT_YEW_CROSSBOW`,
 `OBJECT_OAK_CROSSBOW`, `OBJECT_EBONY_CROSSBOW`, `OBJECT_CRYSTAL_CROSSBOW`
 (+ `_PUMPCROSSBOW` variants), plus `OBJECT_PROJECTILE_WEAPON_CROSSBOW_TEMPLATE`.
+
+## `mac-symbols-sample.txt` — Feral Mac symbols (public sample)
+
+31 demangled C++ symbols transcribed from the only public screenshot of the
+Mac port's debug symbols (see community-resources.md backlog item 1). The full
+dump requires the Mac binary; extract it with
+[`../../Tools/extract_mac_symbols.py`](../../Tools/extract_mac_symbols.py),
+which also emits `mac-vs-pc-rtti.tsv` cross-referencing the symbols against
+`rtti-classes.tsv` above.

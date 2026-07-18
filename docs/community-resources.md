@@ -57,10 +57,30 @@ dropped). Forum thread URL pattern:
 
 ## High-value research backlog
 
-1. **Mac debug symbols** (th=11080, blastedt): the Feral Mac port of TLC ships
-   with full symbols — every engine function named. Source the Mac binary,
-   dump its symbol table, port names to the PC exe by matching code (blastedt
-   proved the method by hand). Biggest single RE accelerator available.
+1. **Mac debug symbols** — CONFIRMED real, tooling READY, blocked only on
+   legitimately obtaining the binary (2026-07-18 investigation):
+   - blastedt confirmed (fabletlcmod th=71721 / th=11080) the Feral Mac port
+     (2008) is compiled with **full debug symbols — every function name with
+     its demangled C++ signature**. His one public screenshot (imgur LrerHwK)
+     is transcribed in [data/mac-symbols-sample.txt](data/mac-symbols-sample.txt)
+     (31 symbols); nobody ever published a full dump. He also noted the Mac
+     dev-console render function is empty too — corroborating that the
+     console was stubbed engine-wide, not just on PC.
+   - **Acquisition reality:** the Steam release (app 204030) is
+     Windows-only — no Mac depot, so a Steam copy does NOT contain it. The
+     Mac version was Feral's separate, now-delisted 2008 retail SKU (32-bit;
+     won't even run on macOS Catalina+). No legitimate digital storefront
+     sells it today; a used retail Mac disc is the realistic legal route.
+     Abandonware mirrors host it but that is not a license — do not use them.
+   - **When a legitimate binary is in hand:** run
+     [`Tools/extract_mac_symbols.py`](../Tools/extract_mac_symbols.py)
+     (`pip install lief`; runs on Windows, no macOS needed) on the Mach-O
+     executable inside the .app bundle. It dumps every demangled symbol, an
+     address→name TSV, and auto-cross-references class names against
+     [data/rtti-classes.tsv](data/rtti-classes.tsv) to produce the
+     high-confidence name↔PC-class map. From there, port names onto the PC
+     exe by matching code/vtable shape (blastedt's method). Biggest single RE
+     accelerator available; everything but the binary is ready.
 2. ~~Scrape the full RTTI dump from th=9198~~ **DONE** →
    [data/rtti-classes.tsv](data/rtti-classes.tsv) (2090 classes with VFT +
    inheritance; validated against known VFTs). A diff against a fresh

@@ -1,0 +1,34 @@
+# Fable TLC Mac (Feral, 2008) debug symbols — PUBLIC SAMPLE ONLY
+#
+# The Mac port is compiled with full debug symbols: every function name with
+# its demangled C++ signature (parameter types included). This is the ONLY
+# public sample that exists — the 31 symbols below, transcribed from the one
+# screenshot blastedt posted (fabletlcmod th=71721, imgur LrerHwK). Nobody has
+# ever published a full symbol dump; obtaining it requires the Mac binary
+# (see docs/community-resources.md backlog item 1 + Tools/extract_mac_symbols.py).
+#
+# These happen to be renderer/engine-infrastructure symbols (wherever the list
+# was scrolled). They demonstrate the richness: full parameter types, ctors,
+# dtors, and the PeekName(void) virtual on every CEngineVSConstantLayout*.
+
+CEngineVertexBufferPool::BuildNewBuffer(ulong *, EVertexType, long, long, ulong, EVertexType /*...*/)
+CEngineVSConstantLayoutRepeatedMesh::~CEngineVSConstantLayoutRepeatedMesh()
+CEngineVSConstantLayoutRepeatedMesh::PeekName(void)
+CEngineVSConstantLayoutRepeatedMesh::CEngineVSConstantLayoutRepeatedMesh(void /*...*/)
+CEngineVSConstantLayoutParticles::~CEngineVSConstantLayoutParticles()
+CEngineVSConstantLayoutParticles::PeekName(void)
+CEngineVSConstantLayoutParticles::CEngineVSConstantLayoutParticles(void)
+CEngineVSConstantLayoutLightsBones::~CEngineVSConstantLayoutLightsBones()
+CEngineVSConstantLayoutLightsBones::PeekName(void)
+CEngineVSConstantLayoutLightsBones::CEngineVSConstantLayoutLightsBones(void)
+CEngineVSConstantLayoutLights::~CEngineVSConstantLayoutLights()
+CEngineVSConstantLayoutLights::PeekName(void)
+CEngineVSConstantLayoutLights::CEngineVSConstantLayoutLights(void)
+CEngineVSConstantLayoutBasic::~CEngineVSConstantLayoutBasic()
+CEngineVSConstantLayoutBasic::PeekName(void)
+CEngineVSConstantLayoutBasic::CEngineVSConstantLayoutBasic(void)
+CEngineTreeFilerBase::~CEngineTreeFilerBase()
+CEngineTreeFilerBase::Uninitialise(void)
+CEngineTreeFilerBase::RemoveKey(ulong)
+CEngineTreeFilerBase::Initialise(long)
+CEngineTreeFilerBase::GetTreeMemSize(CEngineTreeFilerBase::CNodeHeader *)
