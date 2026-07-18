@@ -111,6 +111,25 @@ namespace
         return (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
     }
 
+    // Re-acquire only, SEH-guarded. With DISCL_FOREGROUND the device drops
+    // its acquisition every time the window loses foreground -- and with TWO
+    // clients on one desktop that now happens constantly (retail never had a
+    // second game window to lose focus to). At the main menu the game does
+    // not re-acquire on its own, so the menu cursor goes dead after a focus
+    // bounce. Cheap: returns S_FALSE immediately when already acquired.
+    void ReacquireDevice()
+    {
+        __try
+        {
+            void** vtbl = *reinterpret_cast<void***>(mouseDevice);
+            auto acquire = reinterpret_cast<DeviceCall_t>(vtbl[kAcquireSlot]);
+            acquire(mouseDevice);
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+        }
+    }
+
     // The three DirectInput calls, isolated in an SEH frame (no C++ objects,
     // so __try/__except is legal here). Returns true only on a clean toggle.
     bool ApplyCoopLevel(bool exclusive)
@@ -168,6 +187,8 @@ namespace
     // second (background) client never touches its device.
     DWORD WINAPI ToggleWorker(LPVOID)
     {
+        int  steadyTicks = 0;
+        bool wasFocused  = false;
         for (;;)
         {
             Sleep(15);
@@ -176,12 +197,35 @@ namespace
 
             bool focused = (GetForegroundWindow() == gameWnd);
             if (!focused)
+            {
+                wasFocused = false;
                 continue; // background clients: leave the device to the game
+            }
+            if (!wasFocused)
+            {
+                // Just regained focus (clicked over from the other client):
+                // re-acquire right away so the cursor is alive immediately.
+                wasFocused = true;
+                if (mouseExclusive)
+                    ReacquireDevice();
+            }
 
             // Release the grab while Alt is held or a drag is in progress.
             bool wantExclusive = !(AltHeld() || inSizeMove);
             if (wantExclusive == mouseExclusive)
+            {
+                // Steady grabbed state: keep the device acquired. Focus
+                // bouncing between two clients un-acquires it, and at the
+                // main menu the game never re-acquires by itself -- the
+                // cursor sits dead until this nudge (~every 0.5 s).
+                if (mouseExclusive && ++steadyTicks >= 33)
+                {
+                    steadyTicks = 0;
+                    ReacquireDevice();
+                }
                 continue;
+            }
+            steadyTicks = 0;
 
             if (ApplyCoopLevel(wantExclusive))
             {
