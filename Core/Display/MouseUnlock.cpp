@@ -1,6 +1,7 @@
 #include "MouseUnlock.h"
 
 #include "../Config/Config.h"
+#include "../DevTools/CrashDiag.h"
 
 #include <iostream>
 
@@ -117,22 +118,32 @@ namespace
     // second game window to lose focus to). At the main menu the game does
     // not re-acquire on its own, so the menu cursor goes dead after a focus
     // bounce. Cheap: returns S_FALSE immediately when already acquired.
-    void ReacquireDevice()
+    // Returns the raw HRESULT (0xDEAD0001 when the call itself faulted).
+    HRESULT ReacquireDevice()
     {
         __try
         {
             void** vtbl = *reinterpret_cast<void***>(mouseDevice);
             auto acquire = reinterpret_cast<DeviceCall_t>(vtbl[kAcquireSlot]);
-            acquire(mouseDevice);
+            return acquire(mouseDevice);
         }
         __except (EXCEPTION_EXECUTE_HANDLER)
         {
+            return (HRESULT)0xDEAD0001;
         }
     }
 
+    // HRESULTs of one release+setcoop+acquire cycle, for the diagnostics log.
+    struct CoopResult
+    {
+        HRESULT unacquire;
+        HRESULT setCoop;
+        HRESULT acquire;
+    };
+
     // The three DirectInput calls, isolated in an SEH frame (no C++ objects,
     // so __try/__except is legal here). Returns true only on a clean toggle.
-    bool ApplyCoopLevel(bool exclusive)
+    bool ApplyCoopLevel(bool exclusive, CoopResult* out)
     {
         __try
         {
@@ -141,14 +152,15 @@ namespace
             auto setCoop   = reinterpret_cast<SetCoopLevel_t>(vtbl[kSetCoopSlot]);
             auto acquire   = reinterpret_cast<DeviceCall_t>(vtbl[kAcquireSlot]);
 
-            unacquire(mouseDevice);
-            HRESULT hr = setCoop(mouseDevice, gameWnd,
-                                 exclusive ? kExclusiveFlags : kNonExclusiveFlags);
-            acquire(mouseDevice); // may fail benignly; the game re-acquires
-            return SUCCEEDED(hr);
+            out->unacquire = unacquire(mouseDevice);
+            out->setCoop   = setCoop(mouseDevice, gameWnd,
+                                     exclusive ? kExclusiveFlags : kNonExclusiveFlags);
+            out->acquire   = acquire(mouseDevice); // may fail benignly; the game re-acquires
+            return SUCCEEDED(out->setCoop);
         }
         __except (EXCEPTION_EXECUTE_HANDLER)
         {
+            out->unacquire = out->setCoop = out->acquire = (HRESULT)0xDEAD0001;
             return false;
         }
     }
@@ -207,7 +219,10 @@ namespace
                 // re-acquire right away so the cursor is alive immediately.
                 wasFocused = true;
                 if (mouseExclusive)
-                    ReacquireDevice();
+                {
+                    HRESULT hr = ReacquireDevice();
+                    CrashDiag::Note("[mouse] focus gained, reacquire hr=0x%08X", hr);
+                }
             }
 
             // Release the grab while Alt is held or a drag is in progress.
@@ -217,17 +232,26 @@ namespace
                 // Steady grabbed state: keep the device acquired. Focus
                 // bouncing between two clients un-acquires it, and at the
                 // main menu the game never re-acquires by itself -- the
-                // cursor sits dead until this nudge (~every 0.5 s).
+                // cursor sits dead until this nudge (~every 0.5 s). Log only
+                // result CHANGES, or the log would grow forever.
                 if (mouseExclusive && ++steadyTicks >= 33)
                 {
                     steadyTicks = 0;
-                    ReacquireDevice();
+                    HRESULT hr = ReacquireDevice();
+                    static HRESULT lastLogged = 1; // impossible HRESULT
+                    if (hr != lastLogged)
+                    {
+                        lastLogged = hr;
+                        CrashDiag::Note("[mouse] steady reacquire hr=0x%08X"
+                                        " (logged on change only)", hr);
+                    }
                 }
                 continue;
             }
             steadyTicks = 0;
 
-            if (ApplyCoopLevel(wantExclusive))
+            CoopResult r = {};
+            if (ApplyCoopLevel(wantExclusive, &r))
             {
                 mouseExclusive = wantExclusive;
                 if (!wantExclusive)
@@ -238,6 +262,10 @@ namespace
                 Log(wantExclusive ? "mouse grabbed (retail exclusive)"
                                   : "mouse released (drag/resize/switch windows)");
             }
+            CrashDiag::Note("[mouse] toggle -> %s: unacquire=0x%08X setCoop=0x%08X"
+                            " acquire=0x%08X",
+                            wantExclusive ? "exclusive" : "shared",
+                            r.unacquire, r.setCoop, r.acquire);
         }
     }
 
@@ -325,6 +353,8 @@ namespace
             // we never toggle a released COM object.
             mouseDevice = *device;
             Log("mouse device captured");
+            CrashDiag::Note("[mouse] device captured @ %p (foreground=%d)",
+                            *device, GetForegroundWindow() == gameWnd);
         }
         return hr;
     }
@@ -409,6 +439,10 @@ namespace MouseUnlock
         gameWnd = gameWindow;
         gameProc = (WNDPROC)SetWindowLongPtrW(gameWindow, GWLP_WNDPROC,
                                               (LONG_PTR)&HookProc);
+        CrashDiag::Note("[mouse] window ready: hwnd=%p subclass=%s device=%p"
+                        " foreground=%d",
+                        gameWindow, gameProc ? "ok" : "FAILED", mouseDevice,
+                        GetForegroundWindow() == gameWindow);
         if (!gameProc)
         {
             Log("failed to subclass the game window");

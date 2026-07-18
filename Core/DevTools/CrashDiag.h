@@ -24,4 +24,9 @@ namespace CrashDiag
     // Install after MinHook is initialised (Multiplayer::GetInstance()).
     // Gated on [general] crash_diag in EgoMP.ini (default on).
     void Install();
+
+    // Timestamped printf-style line into EgoMP-crash-<pid>.log, for other
+    // modules (e.g. the mouse-grab worker) to leave a persistent trace the
+    // hidden console can't provide. No-op before Install()/when disabled.
+    void Note(const char* fmt, ...);
 }

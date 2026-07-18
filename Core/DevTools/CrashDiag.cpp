@@ -384,6 +384,19 @@ namespace
 
 namespace CrashDiag
 {
+    void Note(const char* fmt, ...)
+    {
+        if (!logPath[0])
+            return;
+        char buf[512];
+        va_list args;
+        va_start(args, fmt);
+        _vsnprintf_s(buf, _TRUNCATE, fmt, args);
+        va_end(args);
+        AppendTimestamp();
+        Appendf("%s\n", buf);
+    }
+
     void Install()
     {
         if (!Config::Get().crashDiag)
