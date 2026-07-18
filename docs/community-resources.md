@@ -71,11 +71,12 @@ dropped). Forum thread URL pattern:
 4. **Deep-read threads**: th=3391 all pages (more addresses mid-thread),
    th=5795 pages 2–4 (newer CBox builds), wiki `bin_entries` namespace
    (per-def binary layouts), th=10273 page 2 (latest def.xml).
-5. **Dormant netcode RE**: disassemble around CNetworkClient/CNetworkServer
-   VFTs (0x0122EDAC / 0x0122ED30) and the TCI_COOP_SPIRIT /
-   HERO_ONLINE_SCOREBOARD components — the engine may already contain
-   per-player plumbing (CWorld::GetPlayer(int)!) we can reuse instead of
-   reimplementing.
+5. ~~Dormant netcode RE~~ **DONE 2026-07-18** (see engine-internals.md
+   "Investigated"): CNetworkClient/CNetworkServer are hollow stubs (2-slot
+   vtables, no winsock) — no reusable transport, so EgoMP's SLikeNet approach
+   is correct. But CTCCoopSpirit and CTCHeroOnlineScoreboard are **live**
+   Thing Components with real logic — the co-op spirit is a genuine
+   second-entity primitive worth building on.
 6. **Debug console resurrection**: CConsole::Initialise at 0x9ED190 is intact
    in retail — enabling it would give us a free in-game command surface
    (FableMenu's retail-debug-bool list proves the console-backed globals still

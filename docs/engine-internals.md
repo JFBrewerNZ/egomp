@@ -185,6 +185,40 @@ Fable.exe+0x7030  CUserProfileManager::IsDebugProfile — patch 32 C0 C3 → B0 
 - Keshire (2007): the player is "a special NPC" with a special script type and
   movement type, both hookable — the NPC-puppet replication model EgoMP uses.
 
+### Investigated 2026-07-18 (disassembled the live Steam exe)
+
+**The transport classes are hollow — do NOT try to reuse them.**
+`CNetworkClient` (vtable `0x0122EDAC`) and `CNetworkServer` (`0x0122ED30`) each
+have only a **2-slot vtable**: slot 0 is a standard MSVC scalar-deleting
+destructor, slot 1 is the shared `return 0` stub at `0x0099A340`. No virtual
+methods, and no code anywhere in them calls Ws2_32/winsock. Only the RTTI, a
+destructor, and a few member fields (the CNetworkServer ctor at `0x00415E20`
+constructs a handful of string members) survived into retail; the actual
+send/recv/connect implementation was compiled out. **Conclusion: EgoMP's own
+SLikeNet transport is the correct approach — there is no dormant engine
+networking to hook.** (Ctor/ref sites: CNetworkClient `0x00419333`,
+CNetworkServer `0x00415E20` / `0x00415E5A`.)
+
+**The gameplay-side co-op/online Thing Components ARE live and functional**
+(full 28-slot CTCBase vtables with real, non-stub methods; none call winsock —
+they are local logic with nothing to talk to):
+- `CTCCoopSpirit` (vtable `0x0125B264`, ctor near `0x00670063`): real methods at
+  slots 4 (`0x006700F0`, ~53 ins) and 9 (`0x00670A10`, ~48 ins) plus dtor. This
+  is the retail co-op "spirit" helper — a real, working second-entity primitive.
+  EgoMP already wraps it (`SDK/Fable/CoopSpirit`); this confirms it is genuine
+  engine functionality, not a stub, and a natural building block for a
+  controllable second pawn.
+- `CTCHeroOnlineScoreboard` (vtable `0x0124DB34`, ctor near `0x00562ED0`): a
+  substantial method at slot 1 (`0x00560720`, **~120 instructions**) plus slot
+  26 (`0x00564570`, ~29 ins). Real leaderboard/stat-serialization logic that
+  exists but has no service to submit to. Worth a closer read only if EgoMP
+  ever wants a stat-sync / scoreboard surface — not for transport.
+
+Net: the engine was clearly built with multiplayer/co-op in mind (the RTTI in
+`data/rtti-classes.tsv` proves it), but the retail build kept the *gameplay*
+scaffolding and stripped the *transport*. Reimplementing the wire protocol (as
+EgoMP does) is unavoidable; the co-op-spirit TC is reusable gameplay plumbing.
+
 ## ImGui overlay recipe (for a future in-game EgoMP UI)
 
 FableMenu's proven approach on this exact game (gui/dx9hook.cpp, ~350 lines):
