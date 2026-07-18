@@ -334,9 +334,17 @@ namespace
         else if (rec->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
                  rec->NumberParameters >= 2)
         {
-            Appendf("  AV: %s address 0x%08X\n",
-                    rec->ExceptionInformation[0] ? "writing" : "reading",
-                    (unsigned)rec->ExceptionInformation[1]);
+            // ExceptionInformation[0]: 0 read, 1 write, 8 execute (DEP). An
+            // execute fault at a tiny address (e.g. 0x9) is a call through a
+            // freed/garbage pointer — frame #1 below is the culprit caller.
+            const ULONG_PTR op = rec->ExceptionInformation[0];
+            const char* what = op == 8 ? "executing" : op == 1 ? "writing" : "reading";
+            const unsigned addr = (unsigned)rec->ExceptionInformation[1];
+            Appendf("  AV: %s address 0x%08X  (eip 0x%08X)%s\n",
+                    what, addr, (unsigned)info->ContextRecord->Eip,
+                    (op == 8 && addr < 0x10000)
+                        ? "  <call through freed/garbage pointer — see frame #1>"
+                        : "");
         }
 
         void* frames[24] = {};
@@ -351,17 +359,37 @@ namespace
         DumpRing();
     }
 
+    // A wild jump (execute fault at a tiny address) is always a real crash —
+    // a call through a freed/garbage pointer — never a benign read probe, so
+    // it's worth logging first-chance in case the game swallows it before the
+    // unhandled filter would ever see it.
+    static bool IsWildJump(const EXCEPTION_RECORD* rec)
+    {
+        return rec->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+               rec->NumberParameters >= 2 &&
+               rec->ExceptionInformation[0] == 8 &&        // execute
+               rec->ExceptionInformation[1] < 0x10000;     // near-null target
+    }
+
     LONG WINAPI VectoredHandler(EXCEPTION_POINTERS* info)
     {
-        // First-chance, passive observer: log C++ throws only (AVs fire for
-        // benign probes all over a hooked game) and always continue search.
-        if (info->ExceptionRecord->ExceptionCode != kMsvcException)
+        // First-chance, passive observer: log C++ throws and wild jumps only
+        // (ordinary AVs fire for benign probes all over a hooked game). Always
+        // continue the search.
+        const EXCEPTION_RECORD* rec = info->ExceptionRecord;
+        const bool wild = IsWildJump(rec);
+        if (rec->ExceptionCode != kMsvcException && !wild)
             return EXCEPTION_CONTINUE_SEARCH;
 
         if (InterlockedCompareExchange(&inHandler, 1, 0) != 0)
             return EXCEPTION_CONTINUE_SEARCH; // reentrant probe fault: skip
 
-        if (InterlockedIncrement(&throwsSeen) <= kMaxLoggedThrows)
+        if (wild)
+        {
+            LogException("WILD JUMP (first chance — likely a freed/garbage call)", info);
+            WriteDumpOnce(info);
+        }
+        else if (InterlockedIncrement(&throwsSeen) <= kMaxLoggedThrows)
         {
             LogException("C++ THROW (first chance)", info);
             WriteDumpOnce(info);
