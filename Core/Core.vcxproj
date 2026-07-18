@@ -149,6 +149,7 @@
     <ClInclude Include="Display\WindowedMode.h" />
     <ClInclude Include="Platform\SaveRedirect.h" />
     <ClInclude Include="Platform\ClientSlot.h" />
+    <ClInclude Include="Platform\CpuAffinity.h" />
     <ClInclude Include="DevTools\CrashDiag.h" />
     <ClInclude Include="DevTools\EquipmentProbe.h" />
     <ClInclude Include="DevTools\ActionTracer.h" />
@@ -199,6 +200,7 @@
     <ClCompile Include="Display\WindowedMode.cpp" />
     <ClCompile Include="Platform\SaveRedirect.cpp" />
     <ClCompile Include="Platform\ClientSlot.cpp" />
+    <ClCompile Include="Platform\CpuAffinity.cpp" />
     <ClCompile Include="DevTools\CrashDiag.cpp" />
     <ClCompile Include="DevTools\EquipmentProbe.cpp" />
     <ClCompile Include="DevTools\ActionTracer.cpp" />

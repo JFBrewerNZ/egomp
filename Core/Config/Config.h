@@ -65,6 +65,11 @@ public:
     // world-load crash is under investigation.
     bool crashDiag = true;
 
+    // Pin each client to a single CPU core (by slot). Fable TLC has timing/
+    // threading bugs across multiple cores (the classic `start /affinity` fix);
+    // two clients amplify it. On by default. 0 to leave affinity untouched.
+    bool cpuAffinity = true;
+
 private:
     Config();
 };

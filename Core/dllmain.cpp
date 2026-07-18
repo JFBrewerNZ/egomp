@@ -5,6 +5,7 @@
 #include "./DevTools/CrashDiag.h"
 #include "./Display/MouseUnlock.h"
 #include "./Display/WindowedMode.h"
+#include "./Platform/CpuAffinity.h"
 #include "./Platform/SaveRedirect.h"
 #include "./Multiplayer/Fable/Multiplayer.h"
 
@@ -110,6 +111,11 @@ BOOL APIENTRY DllMain( HMODULE hModule,
             // After SaveRedirect so the header reports the claimed slot; needs
             // MinHook, initialised by Multiplayer::GetInstance() above.
             CrashDiag::Install();
+
+            // Pin this client to its own CPU core (Fable's multi-core timing
+            // bugs; two clients amplify them). After ClientSlot is claimable so
+            // each client picks a distinct core.
+            CpuAffinity::Install();
             break;
         }
         case DLL_THREAD_ATTACH:
