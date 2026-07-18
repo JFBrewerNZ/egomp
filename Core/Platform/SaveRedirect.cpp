@@ -14,6 +14,7 @@
 namespace
 {
     constexpr int kCsidlPersonal = 0x0005; // CSIDL_PERSONAL == the Documents folder
+    constexpr int kCsidlAppData  = 0x001A; // CSIDL_APPDATA == Roaming AppData
 
     using SHGetFolderPathW_t = HRESULT(WINAPI*)(HWND, int, HANDLE, DWORD, LPWSTR);
     SHGetFolderPathW_t oSHGetFolderPathW = nullptr;
@@ -70,12 +71,29 @@ namespace
     HRESULT WINAPI HSHGetFolderPathW(HWND hwnd, int csidl, HANDLE token, DWORD flags, LPWSTR out)
     {
         HRESULT hr = oSHGetFolderPathW(hwnd, csidl, token, flags, out);
+        if (FAILED(hr) || !out || redirectBase.empty())
+            return hr;
+
         // csidl carries flags in the high bits (e.g. CSIDL_FLAG_CREATE); the
-        // folder id is the low byte.
-        if (SUCCEEDED(hr) && out && (csidl & 0xFF) == kCsidlPersonal && !redirectBase.empty())
+        // folder id is the low byte. The game derives TWO per-user locations:
+        //  - Documents  -> "My Games\Fable"  (saves, tattoos, profiles)
+        //  - AppData    -> "Microsoft\Fable" (comfront/comback.dat, a cache it
+        //    opens read/write with NO sharing; a second client's world load
+        //    dies on a CBBBFileException when the first client holds it)
+        // Both must be per-client, so both are rerouted under this client's
+        // folder. Distinct subtrees ("My Games\..." vs "AppData\Microsoft\...")
+        // keep them from ever colliding with each other.
+        const int folder = csidl & 0xFF;
+        if (folder == kCsidlPersonal)
         {
             CreateDirTree(redirectBase);
             wcscpy_s(out, MAX_PATH, redirectBase.c_str());
+        }
+        else if (folder == kCsidlAppData)
+        {
+            const std::wstring appData = redirectBase + L"\\AppData";
+            CreateDirTree(appData);
+            wcscpy_s(out, MAX_PATH, appData.c_str());
         }
         return hr;
     }
@@ -175,6 +193,6 @@ namespace SaveRedirect
         }
 
         Log("client " + std::to_string(clientNumber) + " Documents -> " + Narrow(redirectBase)
-            + " (Fable data at that path + \\My Games\\Fable)");
+            + " (saves at +\\My Games\\Fable, AppData cache at +\\AppData\\Microsoft\\Fable)");
     }
 }
