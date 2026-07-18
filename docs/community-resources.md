@@ -61,13 +61,13 @@ dropped). Forum thread URL pattern:
    with full symbols — every engine function named. Source the Mac binary,
    dump its symbol table, port names to the PC exe by matching code (blastedt
    proved the method by hand). Biggest single RE accelerator available.
-2. **Scrape the full RTTI dump** from th=9198 (goto=66825, ~2662 classes with
-   VFT addresses + inheritance chains) into a machine-readable table next to
-   Tools/rtti_scan.py output; diff against our own scan.
-3. **FableMenu Database.cpp** (190KB in the repo): ready-made name tables —
-   2822 object defs, 700 creature defs, 1165 particles, 231 creature anims,
-   187 quest scripts, 95 holy sites, 30 factions, 113 brains. Extract as data
-   files for EgoMP spawning/sync (names are game data, not FableMenu code).
+2. ~~Scrape the full RTTI dump from th=9198~~ **DONE** →
+   [data/rtti-classes.tsv](data/rtti-classes.tsv) (2090 classes with VFT +
+   inheritance; validated against known VFTs). A diff against a fresh
+   `Tools/rtti_scan.py` run of the live exe would confirm nothing drifted.
+3. ~~Extract FableMenu Database.cpp name tables~~ **DONE** →
+   [data/](data/README.md) (13 lists: objects, creatures, brains, holy sites,
+   player modes, factions…).
 4. **Deep-read threads**: th=3391 all pages (more addresses mid-thread),
    th=5795 pages 2–4 (newer CBox builds), wiki `bin_entries` namespace
    (per-def binary layouts), th=10273 page 2 (latest def.xml).

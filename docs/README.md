@@ -11,6 +11,7 @@ document cites where its facts came from.
 | [file-formats.md](file-formats.md) | On-disk formats: .big, .bin/defs, .lev, .stb, .wad, .tng/.wld/.gtg, saves — what is fully specified where, and what is still uncracked. |
 | [def-system.md](def-system.md) | The CompiledDefs definition system: def types, CRC-hashed field IDs, entry-ID lists, hidden in-game scaling constants, quest-gated TNG sections. |
 | [community-resources.md](community-resources.md) | Tool catalog with links, modding-community docs, multiplayer prior art, and the high-value research backlog (Mac debug symbols, RTTI dump, Fable SDK). |
+| [data/](data/README.md) | Machine-readable reference data: the full RTTI class→vtable table (2090 classes) and 13 def-name lists (objects, creatures, brains, holy sites, player modes…) for use in code. |
 
 Our own first-party reverse engineering lives in
 [`../Tools/RE-NOTES.md`](../Tools/RE-NOTES.md) (equipment/inventory/animation/
