@@ -231,3 +231,45 @@ runtime (no ASLR, base 0x400000).
   SetCapture/SetCursor at 0x99D6xx) is a separate dialog-ish window.
 - Pause-on-focus-loss leads for later: WM_ACTIVATE→0x9A5A50,
   WM_ACTIVATEAPP→0x9A5270, focus→0x9A5A30 (volume + [+0x170] callback).
+
+## Carried-weapon visuals & why crossbows drop to the floor (2026-07-18)
+
+Investigated with Tools/disasm.py (annotated against docs/data/symbols.tsv)
+after Jamon's observation that crossbows never show on a hero's back.
+
+**RestoreCarriedWeapons `0x5C8101`** (= "build sheathed/back visuals"): clears
+old visuals (`0x5C552C`), then for the melee holder (`weaponsTC+0x134`) and the
+ranged holder (`weaponsTC+0x141`) — if the held CThing `isThingAlive`
+(`0x4CC340`) — derefs the IntelligentPointer (`0xA01B50`) and calls the SAME
+builder `0x5C36C2(creature, weaponThing)`. **No weapon-type branch here**; melee
+and ranged are treated identically.
+
+**Builder `0x5C36C2`** resolves the weapon's def (`0x42B1A6(weapon+0x70, &def)`)
+and reads **`def+0x38`**. That value is used BOTH as a gate — `cmp/jle` at
+`0x5C37AC`/`0x5C37B4` skips the whole create-visual block when `def+0x38 <= 0`
+— AND, inside the block, as the **def-global-index passed to `CreateThing`**
+(`0x5C37E0` `mov ecx,[def+0x38]` → `0x5C37E3` CreateThing) that spawns the
+on-back mesh, which is then `SetInLimbo` + `AddThingInCarrySlot` (carry slot
+0x47). So:
+
+> **weapon def `+0x38` = the def index of the weapon's on-back/sheathed visual
+> object; `0` = the weapon has no back visual.** Swords/longbows have one;
+> crossbows (per Jamon, confirmed by this gate) have `+0x38 == 0`, so the game
+> builds no back model for them — correct retail behaviour.
+
+**CreateCarriedWeapon `0x5BE8F3`** (what our puppet apply calls directly via
+CreateCarriedWeaponUnchecked): after the ownership gate (`0x5BDF08`), it
+factory-creates the weapon at `GetPosition(creature)` with mode
+`byte[creature+0x90]` (`0x5BE93C` CreateThing), then — record NULL for puppets
+(our 34ebde1 bypass) → skips all the record/augment/section copies
+(`je 0x5BEA8F`) — and returns the created CThing. **It never limbos or attaches
+that object itself.**
+
+Consequence for puppets: ApplyNetPlayerWeapons creates a carried weapon for the
+ranged slot unconditionally. For a crossbow the game then builds no back visual
+(def+0x38==0), so nothing consumes the factory-created weapon object → it is
+the crossbow left at the puppet's feet. FIX DIRECTION: gate ranged-carried
+creation on def+0x38 > 0 (skip crossbows); show crossbows only via the wield /
+animation path. NEEDS a live probe to confirm def+0x38 on a real crossbow def
+and the in-world state of the created object before shipping (weapon changes
+here have a history of deferred crashes — verify, don't assume).
